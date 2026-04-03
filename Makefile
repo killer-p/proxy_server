@@ -1,12 +1,12 @@
 # Makefile for Clash Control Tool
 #
-# 依赖: libcurl, json-c (可选)
-#
-# 安装依赖 (Ubuntu/Debian):
-#   sudo apt install libcurl4-openssl-dev libjson-c-dev
+# 依赖: gcc（Ubuntu/Debian: sudo apt install build-essential）
 #
 # 编译:
 #   make
+#
+# 一键部署（假设 mihomo 和 Country.mmdb 已在仓库中）:
+#   make deploy
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -16,59 +16,42 @@ LDFLAGS =
 TARGET = clash-ctl
 SRC = clash-ctl.c
 
-# 检查依赖库
-UNAME_S := $(shell uname -s)
-
 # 默认目标
 .PHONY: all
 all: $(TARGET)
+	@echo "编译完成!"
 
 # 编译主程序
 $(TARGET): $(SRC)
 	@echo "编译 clash-ctl..."
 	@$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
-	@echo "编译完成!"
 
 # 清理
 .PHONY: clean
 clean:
 	rm -f $(TARGET) .clash.pid clash.log
 
-# 下载 mihomo (Clash Meta 核心)
+# 更新二进制文件提示
 .PHONY: download
 download:
-	@echo "下载 mihomo (Clash Meta)..."
-	@if command -v curl >/dev/null 2>&1; then \
-		VERSION=$$(curl -sL "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep tag_name | cut -d'"' -f4); \
-		echo "最新版本: $$VERSION"; \
-		curl -sL "https://github.com/MetaCubeX/mihomo/releases/download/$$VERSION/mihomo-linux-amd64-compatible-$$VERSION.gz" -o mihomo.gz; \
-		gunzip -f mihomo.gz; \
-		chmod +x mihomo; \
-		echo "下载完成!"; \
-	elif command -v wget >/dev/null 2>&1; then \
-		VERSION=$$(curl -sL "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep tag_name | cut -d'"' -f4); \
-		echo "最新版本: $$VERSION"; \
-		wget -q "https://github.com/MetaCubeX/mihomo/releases/download/$$VERSION/mihomo-linux-amd64-compatible-$$VERSION.gz" -O mihomo.gz; \
-		gunzip -f mihomo.gz; \
-		chmod +x mihomo; \
-		echo "下载完成!"; \
-	else \
-		echo "错误: 请安装 curl 或 wget"; \
-		exit 1; \
-	fi
+	@echo "二进制文件（mihomo、Country.mmdb）已在仓库中。"
+	@echo "如需更新，请手动下载并替换："
+	@echo "  mihomo:       https://github.com/MetaCubeX/mihomo/releases"
+	@echo "  Country.mmdb: https://github.com/Loyalsoldier/geoip/releases"
 
-# 一键部署: 下载核心 + 编译 + 设置权限
+# 一键部署: 编译 + 设置权限
 .PHONY: deploy
-deploy: download $(TARGET)
-	@chmod +x mihomo $(TARGET)
+deploy: $(TARGET)
+	@chmod +x clash-ctl mihomo 2>/dev/null; true
 	@echo ""
 	@echo "部署完成!"
 	@echo ""
 	@echo "使用方式:"
-	@echo "  ./clash-ctl start     # 启动代理服务"
-	@echo "  ./clash-ctl status    # 查看状态"
-	@echo "  ./clash-ctl list      # 列出节点"
-	@echo "  ./clash-ctl select <节点名>  # 切换节点"
+	@echo "  ./clash-ctl set-url <订阅链接>  # 首次设置订阅"
+	@echo "  ./clash-ctl start              # 启动代理"
+	@echo "  ./clash-ctl status             # 查看状态"
+	@echo "  ./clash-ctl list               # 列出节点"
+	@echo "  ./clash-ctl select <编号>      # 切换节点"
 	@echo ""
 	@echo "其他设备配置代理:"
 	@echo "  地址: <本机IP>:7890"
@@ -89,8 +72,10 @@ help:
 	@echo ""
 	@echo "目标:"
 	@echo "  make          编译程序"
-	@echo "  make clean    清理"
-	@echo "  make download 下载 mihomo 核心"
-	@echo "  make deploy   一键部署 (下载+编译)"
+	@echo "  make clean     清理"
+	@echo "  make deploy   一键部署（编译+权限）"
 	@echo "  make install  安装到系统"
 	@echo "  make help     显示此帮助"
+	@echo ""
+	@echo "提示: mihomo 和 Country.mmdb 已在仓库中，无需额外下载。"
+	@echo "      如需更新，请访问上述下载地址手动替换。"

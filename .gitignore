@@ -1,1 +1,4 @@
 proxy.txt
+profiles
+*.db
+*.log

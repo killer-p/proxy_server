@@ -332,8 +332,12 @@ int cmd_show_url(void)
     }
 }
 
+
 /*
  * 订阅管理：从订阅更新配置
+ *
+ * 核心思路：让 mihomo 自己处理订阅下载和 base64 解码（mihomo 支持）。
+ * 我们只需要生成一个简洁的 proxy.txt，其中包含 proxy-provider type: http。
  */
 int cmd_update(void)
 {
@@ -344,98 +348,83 @@ int cmd_update(void)
         return -1;
     }
 
-    printf("正在从订阅更新配置...\n");
+    printf("正在更新配置文件...\n");
 
-    /* 下载到临时文件 */
-    char tmp_file[] = "proxy.txt.tmp.XXXXXX";
-    int fd = mkstemp(tmp_file);
-    if (fd < 0) {
-        print_err("无法创建临时文件");
-        return -1;
-    }
-    close(fd);
-
-    char cmd[4096];
-    snprintf(cmd, sizeof(cmd), "curl -sL '%s' -o %s", url, tmp_file);
-
-    if (system(cmd) != 0) {
-        unlink(tmp_file);
-        print_err("下载失败");
-        return -1;
-    }
-
-    /* 验证下载的内容是有效配置 */
-    FILE *fp = fopen(tmp_file, "r");
+    /* 生成 proxy.txt：使用 proxy-provider type: http
+     * mihomo 会自动从 URL 下载内容，并自动检测 base64/URI/YAML 格式 */
+    FILE *fp = fopen(CLASH_CONFIG, "w");
     if (!fp) {
-        unlink(tmp_file);
-        print_err("无法读取下载的文件");
+        print_err("无法写入配置文件");
         return -1;
     }
 
-    char first_line[256];
-    if (!fgets(first_line, sizeof(first_line), fp)) {
-        fclose(fp);
-        unlink(tmp_file);
-        print_err("下载的文件为空");
-        return -1;
-    }
+    fprintf(fp,
+        "# mihomo 配置文件 - 由 clash-ctl 自动生成\n"
+        "# 不要手动修改此文件，使用 ./clash-ctl set-url 更新订阅\n"
+        "\n"
+        "mixed-port: 7890\n"
+        "external-controller: 127.0.0.1:9090\n"
+        "allow-lan: true\n"
+        "mode: rule\n"
+        "log-level: info\n"
+        "unified-delay: true\n"
+        "tcp-concurrent: true\n"
+        "discard-blank: true\n"
+        "\n"
+        "dns:\n"
+        "  enable: true\n"
+        "  listen: 0.0.0.0:1053\n"
+        "  enhanced-mode: fake-ip\n"
+        "  fake-ip-range: 198.18.0.1/16\n"
+        "  nameserver:\n"
+        "    - 223.5.5.5\n"
+        "    - 119.29.29.29\n"
+        "  fallback:\n"
+        "    - tls://8.8.8.8\n"
+        "    - tls://1.1.1.1\n"
+        "\n"
+        "proxy-providers:\n"
+        "  sub:\n"
+        "    type: http\n"
+        "    url: \"%s\"\n"
+        "    interval: 3600\n"
+        "    path: ./profiles/sub.yaml\n"
+        "    health-check:\n"
+        "      enable: true\n"
+        "      url: http://www.gstatic.com/generate_204\n"
+        "      interval: 300\n"
+        "    lazy: true\n"
+        "\n"
+        "proxy-groups:\n"
+        "  - name: 自动选择\n"
+        "    type: url-test\n"
+        "    use:\n"
+        "      - sub\n"
+        "    url: http://www.gstatic.com/generate_204\n"
+        "    interval: 300\n"
+        "    tolerance: 50\n"
+        "\n"
+        "  - name: Manual\n"
+        "    type: select\n"
+        "    use:\n"
+        "      - sub\n"
+        "\n"
+        "  - name: FINAL\n"
+        "    type: select\n"
+        "    proxies:\n"
+        "      - 自动选择\n"
+        "      - Manual\n"
+        "      - DIRECT\n"
+        "\n"
+        "rules:\n"
+        "  - MATCH,FINAL\n",
+        url);
+
     fclose(fp);
 
-    /* 检查是否是有效的代理配置 */
-    trim(first_line);
-
-    /* 如果包含错误/登录信息 */
-    if (strstr(first_line, "请登录") != NULL ||
-        strstr(first_line, "错误") != NULL ||
-        strstr(first_line, "error") != NULL ||
-        strstr(first_line, "Error") != NULL ||
-        strstr(first_line, "登录") != NULL) {
-        unlink(tmp_file);
-        print_err("订阅内容无效（可能需要登录）");
-        return -1;
-    }
-
-    /* 如果看起来像 Base64 编码，尝试解码并检查 */
-    if (strchr(first_line, ':') == NULL && strlen(first_line) > 50) {
-        /* 可能是 Base64，尝试解码 */
-        char decode_cmd[512];
-        snprintf(decode_cmd, sizeof(decode_cmd),
-            "echo '%s' | base64 -d 2>/dev/null | head -1", first_line);
-        FILE *dec = popen(decode_cmd, "r");
-        if (dec) {
-            char decoded[256];
-            if (fgets(decoded, sizeof(decoded), dec)) {
-                trim(decoded);
-                if (strstr(decoded, "请登录") != NULL ||
-                    strstr(decoded, "错误") != NULL ||
-                    strstr(decoded, "error") != NULL) {
-                    pclose(dec);
-                    unlink(tmp_file);
-                    print_err("订阅内容无效（可能需要登录）");
-                    return -1;
-                }
-            }
-            pclose(dec);
-        }
-
-        /* 解码整个文件 */
-        snprintf(decode_cmd, sizeof(decode_cmd),
-            "base64 -d %s > %s.dec && mv %s.dec %s",
-            tmp_file, tmp_file, tmp_file, CLASH_CONFIG);
-        if (system(decode_cmd) == 0) {
-            unlink(tmp_file);
-            print_ok("订阅更新成功（已解码）");
-            printf("  配置文件: %s\n", CLASH_CONFIG);
-            return 0;
-        }
-    }
-
-    /* 直接替换配置文件 */
-    unlink(CLASH_CONFIG);
-    rename(tmp_file, CLASH_CONFIG);
-
-    print_ok("订阅更新成功");
+    print_ok("配置文件已更新（proxy-provider type: http）");
     printf("  配置文件: %s\n", CLASH_CONFIG);
+    printf("  订阅 URL: %s\n", url);
     return 0;
 }
 
@@ -484,50 +473,8 @@ int cmd_start(void)
     char *url = get_subscription_url();
     if (url && *url) {
         printf("正在更新订阅配置...\n");
-        /* 下载到临时文件验证后再替换 */
-        char tmp_file[] = "proxy.txt.tmp.XXXXXX";
-        int fd = mkstemp(tmp_file);
-        if (fd >= 0) {
-            close(fd);
-            char cmd[4096];
-            snprintf(cmd, sizeof(cmd), "curl -sL '%s' -o %s", url, tmp_file);
-            if (system(cmd) == 0) {
-                /* 简单验证 */
-                FILE *fp = fopen(tmp_file, "r");
-                if (fp) {
-                    char first_line[256];
-                    if (fgets(first_line, sizeof(first_line), fp)) {
-                        trim(first_line);
-                        /* 检查是否是登录错误信息 */
-                        if (strstr(first_line, "请登录") != NULL ||
-                            strstr(first_line, "错误") != NULL ||
-                            strstr(first_line, "error") != NULL) {
-                            print_warn("订阅内容无效，使用现有配置");
-                        } else {
-                            /* 尝试解码 Base64 内容 */
-                            char decode_cmd[512];
-                            snprintf(decode_cmd, sizeof(decode_cmd),
-                                "base64 -d %s > %s.dec 2>/dev/null && mv %s.dec %s",
-                                tmp_file, tmp_file, tmp_file, CLASH_CONFIG);
-                            if (system(decode_cmd) == 0) {
-                                print_ok("订阅更新成功");
-                            } else {
-                                /* 不是 Base64，直接替换 */
-                                unlink(CLASH_CONFIG);
-                                rename(tmp_file, CLASH_CONFIG);
-                                print_ok("订阅更新成功");
-                            }
-                        }
-                    } else {
-                        print_warn("订阅下载为空，使用现有配置");
-                    }
-                    fclose(fp);
-                }
-                unlink(tmp_file);
-            } else {
-                unlink(tmp_file);
-                print_warn("订阅下载失败，使用现有配置");
-            }
+        if (cmd_update() != 0) {
+            print_warn("订阅更新失败，使用现有配置");
         }
     }
 
@@ -610,6 +557,75 @@ int cmd_restart(void)
 /*
  * 状态显示：查看 Clash 运行状态
  */
+/* 从 /proxies 获取指定组/proxy 的 now 值 */
+static int get_now_value(const char *name, char *out, size_t out_size)
+{
+    char *json = NULL;
+    int code = http_request("GET", "/proxies", NULL, &json);
+    if (code != 200 || !json) { free(json); return -1; }
+
+    /* 定位到 "proxies":{ 块，避免匹配到 proxy 列表中的名称 */
+    char *proxies_start = strstr(json, "\"proxies\":{");
+    if (!proxies_start) { free(json); return -1; }
+
+    char key[300];
+    snprintf(key, sizeof(key), "\"%s\":{", name);
+    char *g = strstr(proxies_start, key);
+    if (!g) { free(json); return -1; }
+
+    char *now = strstr(g, "\"now\"");
+    if (!now) { free(json); return -1; }
+
+    char *colon = strchr(now, ':');
+    if (!colon) { free(json); return -1; }
+    char *q = colon + 1;
+    while (*q == ' ' || *q == '"') q++;
+    char *end = strchr(q, '"');
+    if (!end || (size_t)(end - q) >= out_size) { free(json); return -1; }
+
+    int len = end - q;
+    memcpy(out, q, len);
+    out[len] = '\0';
+    free(json);
+    return 0;
+}
+
+/* 检查 name 在 /proxies 中是否是组（即 type 不是节点类型） */
+static int is_proxy_group(const char *name)
+{
+    char *json = NULL;
+    int code = http_request("GET", "/proxies", NULL, &json);
+    if (code != 200 || !json) { free(json); return 0; }
+
+    char key[300];
+    snprintf(key, sizeof(key), "\"%s\":{", name);
+    char *g = strstr(json, key);
+    int is_group = 0;
+    if (g) {
+        char *type = strstr(g, "\"type\":\"");
+        if (type) {
+            type += 8;
+            char *type_end = strchr(type, '"');
+            if (type_end) {
+                char t[64];
+                int t_len = type_end - type;
+                if (t_len < (int)sizeof(t)) {
+                    memcpy(t, type, t_len);
+                    t[t_len] = '\0';
+                    const char *node_types[] = { "Vless", "Vmess", "Shadowsocks", "ShadowsocksR", "Snell", "Http", "Tun", "WireGuard", "Hysteria2", "Tuic", "Compatible" };
+                    int nt = sizeof(node_types) / sizeof(node_types[0]);
+                    is_group = 1;
+                    for (int i = 0; i < nt; i++) {
+                        if (strcmp(t, node_types[i]) == 0) { is_group = 0; break; }
+                    }
+                }
+            }
+        }
+    }
+    free(json);
+    return is_group;
+}
+
 int cmd_status(void)
 {
     if (!is_clash_running()) {
@@ -617,72 +633,23 @@ int cmd_status(void)
         return -1;
     }
 
-    char *json = NULL;
-    int code = http_request("GET", "/proxies", NULL, &json);
-
-    if (code != 200 || !json) {
-        print_err("无法连接到 Clash API");
-        free(json);
+    /* 从 FINAL 开始，逐级获取真实节点名 */
+    char current[256];
+    if (get_now_value("FINAL", current, sizeof(current)) != 0) {
+        print_err("无法获取状态");
         return -1;
     }
 
-    /* 查找 "永雏塔菲的魔法卷轴" 对象（键: { 的形式） */
-    char *key_pattern = "\"永雏塔菲的魔法卷轴\":{";
-    char *group = strstr(json, key_pattern);
-    if (group) {
-        /* 跳过键名部分，定位到对象的开始 */
-        char *obj_start = group + strlen(key_pattern) - 1;  /* 指向 { */
-        char *obj_end = NULL;
-
-        /* 查找对应的结束括号 */
-        int depth = 0;
-        for (char *p = obj_start; *p; p++) {
-            if (*p == '{') {
-                depth++;
-            } else if (*p == '}') {
-                depth--;
-                if (depth == 0) {
-                    obj_end = p;
-                    break;
-                }
-            }
-        }
-
-        if (obj_end) {
-            /* 在对象内查找 "now" 字段 */
-            char saved_end = *obj_end;
-            *obj_end = '\0';
-
-            char *now = strstr(obj_start, "\"now\"");
-            if (now) {
-                char *colon = strchr(now, ':');
-                if (colon) {
-                    char *quote = strchr(colon + 1, '"');
-                    if (quote) {
-                        quote++;
-                        char *end = strchr(quote, '"');
-                        if (end) {
-                            *end = '\0';
-                            printf("\033[1;36m当前节点:\033[0m %s\n", quote);
-                            *obj_end = saved_end;
-                            free(json);
-                            return 0;
-                        }
-                    }
-                }
-            }
-            *obj_end = saved_end;
-        }
+    /* 最多递归 5 层，防止死循环 */
+    for (int depth = 0; depth < 5; depth++) {
+        if (!is_proxy_group(current)) break;
+        if (get_now_value(current, current, sizeof(current)) != 0) break;
     }
 
-    print_info("状态: 运行中");
-    free(json);
+    printf("\033[1;36m当前节点:\033[0m %s\n", current);
     return 0;
 }
 
-/*
- * 节点列表：显示所有可用节点
- */
 int cmd_list(void)
 {
     if (!is_clash_running()) {
@@ -692,85 +659,88 @@ int cmd_list(void)
 
     char *json = NULL;
     int code = http_request("GET", "/proxies", NULL, &json);
-
     if (code != 200 || !json) {
         print_err("无法连接到 Clash API");
         free(json);
         return -1;
     }
 
-    /* 查找 "all" 数组（在组对象内） */
-    char *group = strstr(json, "\"永雏塔菲的魔法卷轴\"");
-    if (!group) {
-        printf("未找到代理组\n");
-        free(json);
-        return -1;
-    }
-
-    /* 查找 "all" 数组 */
-    char *all = strstr(group, "\"all\"");
-    if (!all) {
-        free(json);
-        return -1;
-    }
-
-    char *array_start = strchr(all, '[');
-    if (!array_start) {
-        free(json);
-        return -1;
-    }
-
-    /* 找到对应的结束括号 */
-    int depth = 0;
-    char *p = array_start;
-    while (*p) {
-        if (*p == '[') depth++;
-        else if (*p == ']') {
-            depth--;
-            if (depth == 0) break;
-        }
-        p++;
-    }
-
-    if (depth != 0) {
-        free(json);
-        return -1;
-    }
-
-    *p = '\0';  /* 临时截断字符串 */
+    /* /proxies 返回 {"proxies": {...}, ...}
+     * 顶层每个键是一个 proxy 或 proxy-group
+     * 真正的代理节点 type 为 Vless, Vmess, Shadowsocks, Trojan, Snell, Hysteria 等
+     * 代理组的 type 为 Proxy, Selector, URLTest, Direct, Reject, Pass, RejectDrop
+     * 我们只显示代理节点
+     */
+    static const char *skip_types[] = {
+        "Proxy", "Selector", "URLTest", "Direct",
+        "Reject", "Pass", "RejectDrop", "Reject ", NULL
+    };
 
     printf("\n\033[1;33m可用节点列表:\033[0m\n");
     printf("----------------------------------------\n");
 
-    /* 逐个提取节点名称 */
-    char *ptr = array_start + 1;
     int idx = 1;
-    while (*ptr) {
-        /* 跳过空白和逗号 */
-        while (*ptr && (*ptr == ' ' || *ptr == ',' || *ptr == '\n' || *ptr == '\t')) ptr++;
-        if (!*ptr || *ptr == ']') break;
+    char *p = json;
 
-        if (*ptr == '"') {
-            ptr++;
-            char *name_end = strchr(ptr, '"');
-            if (!name_end) break;
-
-            *name_end = '\0';
-            printf("  %2d. %s\n", idx++, ptr);
-            ptr = name_end + 1;
-        } else {
-            ptr++;
+    while ((p = strstr(p, "\"name\":\"")) != NULL) {
+        p += 8;  /* 跳过 "\"name\":\"" */
+        char *ne = p;
+        while (*ne && *ne != '"') ne++;
+        if (!*ne || ne == p) {
+            p++;
+            continue;
         }
+
+        size_t name_len = ne - p;
+        if (name_len >= 256) {
+            p++;
+            continue;
+        }
+
+        char name[256];
+        strncpy(name, p, name_len);
+        name[name_len] = '\0';
+
+        /* 找这个 key 的 type */
+        char *after_name = ne;
+        char *type_k = strstr(after_name, "\"type\":\"");
+        if (!type_k || (type_k - json) >= (ne - json) + 500) {
+            p++;
+            continue;
+        }
+        type_k += 8;  /* 跳过 "\"type\":\"" */
+        char *type_end = type_k;
+        while (*type_end && *type_end != '"') type_end++;
+        size_t type_len = type_end - type_k;
+        if (type_len >= 64) {
+            p++;
+            continue;
+        }
+
+        char type[64];
+        strncpy(type, type_k, type_len);
+        type[type_len] = '\0';
+
+        /* 检查是否应该跳过 */
+        int skip = 0;
+        for (int i = 0; skip_types[i]; i++) {
+            if (strcmp(type, skip_types[i]) == 0) {
+                skip = 1;
+                break;
+            }
+        }
+
+        if (!skip && name_len > 0) {
+            printf("  %2d. %s\n", idx++, name);
+        }
+
+        p = ne + 1;
     }
 
     printf("----------------------------------------\n");
-    *p = ']';  /* 恢复字符串 */
-
     free(json);
 
-    /* 显示当前节点 */
     cmd_status();
-
     return 0;
 }
 
@@ -806,6 +776,60 @@ void url_encode(const char *src, char *dst, size_t dst_size)
 /*
  * 节点选择：切换到指定节点
  */
+/* 根据索引查找节点名 */
+static int get_node_name_by_index(int index, char *out_name, size_t out_size)
+{
+    char *json = NULL;
+    int code = http_request("GET", "/proxies", NULL, &json);
+    if (code != 200 || !json) {
+        free(json);
+        return -1;
+    }
+
+    /* 提取所有节点名称和类型 */
+    typedef struct { char name[256]; char type[64]; } node_t;
+    node_t nodes[256];
+    int count = 0;
+
+    const char *p = json;
+    const char *skip[] = { "Proxy", "Selector", "URLTest", "Direct", "Reject", "Pass", "RejectDrop" };
+    int skip_n = sizeof(skip) / sizeof(skip[0]);
+
+    while (count < 256) {
+        const char *name_tag = strstr(p, "\"name\":\"");
+        if (!name_tag) break;
+        name_tag += 8;
+        const char *name_end = strchr(name_tag, '"');
+        if (!name_end || (size_t)(name_end - name_tag) >= sizeof(nodes[count].name)) { p = name_tag; continue; }
+        int name_len = name_end - name_tag;
+        memcpy(nodes[count].name, name_tag, name_len);
+        nodes[count].name[name_len] = '\0';
+
+        const char *type_tag = strstr(name_end, "\"type\":\"");
+        if (!type_tag) { p = name_end; continue; }
+        type_tag += 8;
+        const char *type_end = strchr(type_tag, '"');
+        if (!type_end || (size_t)(type_end - type_tag) >= sizeof(nodes[count].type)) { p = name_end; continue; }
+        int type_len = type_end - type_tag;
+        memcpy(nodes[count].type, type_tag, type_len);
+        nodes[count].type[type_len] = '\0';
+
+        int is_group = 0;
+        for (int i = 0; i < skip_n; i++) {
+            if (strcmp(nodes[count].type, skip[i]) == 0) { is_group = 1; break; }
+        }
+        if (!is_group) count++;
+        p = type_end;
+    }
+
+    free(json);
+
+    if (index < 1 || index > count) return -1;
+    strncpy(out_name, nodes[index - 1].name, out_size - 1);
+    out_name[out_size - 1] = '\0';
+    return 0;
+}
+
 int cmd_select(const char *node_name)
 {
     if (!is_clash_running()) {
@@ -818,25 +842,27 @@ int cmd_select(const char *node_name)
         return -1;
     }
 
-    /* 目标代理组名称 */
-    const char *group_name = "永雏塔菲的魔法卷轴";
-
-    /* URL 编码代理组名称 */
-    char encoded_group[256];
-    url_encode(group_name, encoded_group, sizeof(encoded_group));
-
-    /* 构造 API 路径 */
-    char path[512];
-    snprintf(path, sizeof(path), "/proxies/%s", encoded_group);
-
-    /* 构造请求体 */
+    char selected[256];
+    char path[256];
     char body[512];
-    snprintf(body, sizeof(body), "{\"name\": \"%s\"}", node_name);
 
-    /* 发送 PUT 请求 */
+    /* 如果是数字，则作为索引解析 */
+    if (isdigit(node_name[0])) {
+        int idx = atoi(node_name);
+        if (get_node_name_by_index(idx, selected, sizeof(selected)) == 0) {
+            printf("  索引 %d -> 切换到 [%s]\n", idx, selected);
+            node_name = selected;
+        } else {
+            print_err("索引超出范围");
+            return -1;
+        }
+    }
+
+    /* 切换 proxy-provider "sub" 的节点 */
+    snprintf(path, sizeof(path), "/providers/proxies/sub/select");
+    snprintf(body, sizeof(body), "{\"name\": \"%s\"}", node_name);
     char *response = NULL;
     int code = http_request("PUT", path, body, &response);
-
     free(response);
 
     if (code == 204 || code == 200) {
@@ -844,11 +870,35 @@ int cmd_select(const char *node_name)
         sleep(1);
         cmd_status();
         return 0;
-    } else {
-        print_err("节点切换失败");
-        printf("  (HTTP %d)\n", code);
-        return -1;
     }
+
+    /* fallback: 通过 /proxies/Manual 切换 */
+    snprintf(path, sizeof(path), "/proxies/Manual");
+    code = http_request("PUT", path, body, &response);
+    free(response);
+
+    if (code == 204 || code == 200) {
+        print_ok("节点切换成功");
+        sleep(1);
+        cmd_status();
+        return 0;
+    }
+
+    /* fallback: 通过 /proxies/FINAL 切换 */
+    snprintf(path, sizeof(path), "/proxies/FINAL");
+    code = http_request("PUT", path, body, &response);
+    free(response);
+
+    if (code == 204 || code == 200) {
+        print_ok("节点切换成功");
+        sleep(1);
+        cmd_status();
+        return 0;
+    }
+
+    print_err("节点切换失败");
+    printf("  (HTTP %d)\n", code);
+    return -1;
 }
 
 /*

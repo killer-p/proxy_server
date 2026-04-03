@@ -1,13 +1,2 @@
-# Claude Code 记忆文件
-.claude
-
-# 编译产物
 clash-ctl
-
-# 配置文件（包含敏感信息）
 proxy.txt
-
-# 日志和临时文件
-*.log
-*.tmp
-*.temp

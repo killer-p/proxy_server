@@ -10,7 +10,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
-LDFLAGS = -lcurl
+LDFLAGS =
 
 # 目标文件
 TARGET = clash-ctl

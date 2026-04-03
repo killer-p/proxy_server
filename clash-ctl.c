@@ -38,6 +38,8 @@
 #define CLASH_CONFIG     "proxy.txt"
 #define CLASH_BIN        "./mihomo"
 #define CLASH_LOG_FILE   "clash.log"
+#define SUBSCRIBE_FILE   ".clash-url"
+#define GEO_DB_URL       "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb"
 
 /* ====== 全局变量 ====== */
 int api_port = CLASH_API_PORT;
@@ -242,7 +244,8 @@ int http_request(const char *method, const char *path, const char *body, char **
  */
 pid_t get_clash_pid(void)
 {
-    char *output = exec_cmd("pgrep -f 'mihomo.*proxy.txt'");
+    /* 使用更精确的匹配：mihomo 二进制路径 */
+    char *output = exec_cmd("pgrep -f '/mihomo '");
     if (!output || !*output) {
         free(output);
         return -1;
@@ -250,7 +253,213 @@ pid_t get_clash_pid(void)
 
     pid_t pid = atoi(output);
     free(output);
+
+    /* 验证进程确实存在 */
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "ps -p %d -o comm= 2>/dev/null", pid);
+    output = exec_cmd(cmd);
+    if (!output || !*output || strstr(output, "mihomo") == NULL) {
+        free(output);
+        return -1;
+    }
+
+    free(output);
     return pid;
+}
+
+/*
+ * 订阅管理：获取订阅链接
+ * 返回: malloc 分配的字符串，需要手动 free
+ */
+char* get_subscription_url(void)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", getenv("HOME") ? getenv("HOME") : ".", SUBSCRIBE_FILE);
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) return NULL;
+
+    static char url[2048];
+    if (fgets(url, sizeof(url), fp)) {
+        trim(url);
+        fclose(fp);
+        if (*url) return url;
+    }
+    fclose(fp);
+    return NULL;
+}
+
+/*
+ * 订阅管理：保存订阅链接
+ */
+int cmd_set_url(const char *url)
+{
+    if (!url || !*url) {
+        print_err("订阅链接不能为空");
+        return -1;
+    }
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", getenv("HOME") ? getenv("HOME") : ".", SUBSCRIBE_FILE);
+
+    FILE *fp = fopen(path, "w");
+    if (!fp) {
+        print_err("无法保存订阅链接");
+        return -1;
+    }
+
+    fprintf(fp, "%s\n", url);
+    fclose(fp);
+
+    printf("订阅链接已保存\n");
+    printf("  链接: %s\n", url);
+    return 0;
+}
+
+/*
+ * 订阅管理：显示当前订阅链接
+ */
+int cmd_show_url(void)
+{
+    char *url = get_subscription_url();
+    if (url && *url) {
+        printf("当前订阅链接: %s\n", url);
+        return 0;
+    } else {
+        printf("未设置订阅链接\n");
+        printf("  使用 ./clash-ctl set-url <链接> 设置\n");
+        return 0;
+    }
+}
+
+/*
+ * 订阅管理：从订阅更新配置
+ */
+int cmd_update(void)
+{
+    char *url = get_subscription_url();
+    if (!url || !*url) {
+        print_warn("未设置订阅链接");
+        printf("  使用 ./clash-ctl set-url <链接> 设置\n");
+        return -1;
+    }
+
+    printf("正在从订阅更新配置...\n");
+
+    /* 下载到临时文件 */
+    char tmp_file[] = "proxy.txt.tmp.XXXXXX";
+    int fd = mkstemp(tmp_file);
+    if (fd < 0) {
+        print_err("无法创建临时文件");
+        return -1;
+    }
+    close(fd);
+
+    char cmd[4096];
+    snprintf(cmd, sizeof(cmd), "curl -sL '%s' -o %s", url, tmp_file);
+
+    if (system(cmd) != 0) {
+        unlink(tmp_file);
+        print_err("下载失败");
+        return -1;
+    }
+
+    /* 验证下载的内容是有效配置 */
+    FILE *fp = fopen(tmp_file, "r");
+    if (!fp) {
+        unlink(tmp_file);
+        print_err("无法读取下载的文件");
+        return -1;
+    }
+
+    char first_line[256];
+    if (!fgets(first_line, sizeof(first_line), fp)) {
+        fclose(fp);
+        unlink(tmp_file);
+        print_err("下载的文件为空");
+        return -1;
+    }
+    fclose(fp);
+
+    /* 检查是否是有效的代理配置 */
+    trim(first_line);
+
+    /* 如果包含错误/登录信息 */
+    if (strstr(first_line, "请登录") != NULL ||
+        strstr(first_line, "错误") != NULL ||
+        strstr(first_line, "error") != NULL ||
+        strstr(first_line, "Error") != NULL ||
+        strstr(first_line, "登录") != NULL) {
+        unlink(tmp_file);
+        print_err("订阅内容无效（可能需要登录）");
+        return -1;
+    }
+
+    /* 如果看起来像 Base64 编码，尝试解码并检查 */
+    if (strchr(first_line, ':') == NULL && strlen(first_line) > 50) {
+        /* 可能是 Base64，尝试解码 */
+        char decode_cmd[512];
+        snprintf(decode_cmd, sizeof(decode_cmd),
+            "echo '%s' | base64 -d 2>/dev/null | head -1", first_line);
+        FILE *dec = popen(decode_cmd, "r");
+        if (dec) {
+            char decoded[256];
+            if (fgets(decoded, sizeof(decoded), dec)) {
+                trim(decoded);
+                if (strstr(decoded, "请登录") != NULL ||
+                    strstr(decoded, "错误") != NULL ||
+                    strstr(decoded, "error") != NULL) {
+                    pclose(dec);
+                    unlink(tmp_file);
+                    print_err("订阅内容无效（可能需要登录）");
+                    return -1;
+                }
+            }
+            pclose(dec);
+        }
+
+        /* 解码整个文件 */
+        snprintf(decode_cmd, sizeof(decode_cmd),
+            "base64 -d %s > %s.dec && mv %s.dec %s",
+            tmp_file, tmp_file, tmp_file, CLASH_CONFIG);
+        if (system(decode_cmd) == 0) {
+            unlink(tmp_file);
+            print_ok("订阅更新成功（已解码）");
+            printf("  配置文件: %s\n", CLASH_CONFIG);
+            return 0;
+        }
+    }
+
+    /* 直接替换配置文件 */
+    unlink(CLASH_CONFIG);
+    rename(tmp_file, CLASH_CONFIG);
+
+    print_ok("订阅更新成功");
+    printf("  配置文件: %s\n", CLASH_CONFIG);
+    return 0;
+}
+
+/*
+ * GeoDB 更新：下载 GeoIP 数据库
+ */
+int cmd_update_geo(void)
+{
+    printf("正在更新 GeoIP 数据库...\n");
+
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd),
+        "curl -sL '%s' -o %s.TMP && mv %s.TMP %s",
+        GEO_DB_URL, CLASH_CONFIG, CLASH_CONFIG, CLASH_CONFIG);
+
+    int ret = system(cmd);
+    if (ret == 0) {
+        print_ok("GeoIP 数据库更新成功");
+        return 0;
+    } else {
+        print_err("GeoIP 数据库更新失败");
+        printf("  请检查网络连接\n");
+        return -1;
+    }
 }
 
 /*
@@ -271,9 +480,62 @@ int cmd_start(void)
         return 0;
     }
 
+    /* 自动更新订阅配置 */
+    char *url = get_subscription_url();
+    if (url && *url) {
+        printf("正在更新订阅配置...\n");
+        /* 下载到临时文件验证后再替换 */
+        char tmp_file[] = "proxy.txt.tmp.XXXXXX";
+        int fd = mkstemp(tmp_file);
+        if (fd >= 0) {
+            close(fd);
+            char cmd[4096];
+            snprintf(cmd, sizeof(cmd), "curl -sL '%s' -o %s", url, tmp_file);
+            if (system(cmd) == 0) {
+                /* 简单验证 */
+                FILE *fp = fopen(tmp_file, "r");
+                if (fp) {
+                    char first_line[256];
+                    if (fgets(first_line, sizeof(first_line), fp)) {
+                        trim(first_line);
+                        /* 检查是否是登录错误信息 */
+                        if (strstr(first_line, "请登录") != NULL ||
+                            strstr(first_line, "错误") != NULL ||
+                            strstr(first_line, "error") != NULL) {
+                            print_warn("订阅内容无效，使用现有配置");
+                        } else {
+                            /* 尝试解码 Base64 内容 */
+                            char decode_cmd[512];
+                            snprintf(decode_cmd, sizeof(decode_cmd),
+                                "base64 -d %s > %s.dec 2>/dev/null && mv %s.dec %s",
+                                tmp_file, tmp_file, tmp_file, CLASH_CONFIG);
+                            if (system(decode_cmd) == 0) {
+                                print_ok("订阅更新成功");
+                            } else {
+                                /* 不是 Base64，直接替换 */
+                                unlink(CLASH_CONFIG);
+                                rename(tmp_file, CLASH_CONFIG);
+                                print_ok("订阅更新成功");
+                            }
+                        }
+                    } else {
+                        print_warn("订阅下载为空，使用现有配置");
+                    }
+                    fclose(fp);
+                }
+                unlink(tmp_file);
+            } else {
+                unlink(tmp_file);
+                print_warn("订阅下载失败，使用现有配置");
+            }
+        }
+    }
+
     /* 检查配置文件 */
     if (access(CLASH_CONFIG, R_OK) != 0) {
         print_err("配置文件 " CLASH_CONFIG " 不存在");
+        printf("  使用 ./clash-ctl set-url <链接> 设置订阅\n");
+        printf("  或手动创建 %s 文件\n", CLASH_CONFIG);
         return -1;
     }
 
@@ -596,20 +858,30 @@ void print_usage(const char *prog)
 {
     printf("\n\033[1mClash 控制工具\033[0m - 纯 POSIX 实现，无需外部依赖\n");
     printf("\n用法: %s <命令> [参数]\n\n", prog);
-    printf("\033[1m命令:\033[0m\n");
+    printf("\033[1m服务控制:\033[0m\n");
     printf("  start              启动 Clash 代理服务\n");
     printf("  stop               停止 Clash 代理服务\n");
     printf("  restart            重启 Clash 代理服务\n");
-    printf("  status             查看当前状态\n");
+    printf("\n\033[1m状态查询:\033[0m\n");
+    printf("  status             查看当前状态和节点\n");
     printf("  list               列出所有可用节点\n");
+    printf("\n\033[1m节点管理:\033[0m\n");
     printf("  select <节点名>     切换到指定节点\n");
+    printf("\n\033[1m订阅管理:\033[0m\n");
+    printf("  set-url <链接>      设置订阅链接\n");
+    printf("  show-url           显示当前订阅链接\n");
+    printf("  update             从订阅更新配置\n");
+    printf("\n\033[1m其他:\033[0m\n");
+    printf("  update-geo         更新 GeoIP 数据库\n");
     printf("  help               显示此帮助信息\n");
     printf("\n\033[1m示例:\033[0m\n");
+    printf("  %s set-url https://example.com/sub\n", prog);
     printf("  %s start\n", prog);
     printf("  %s list\n", prog);
     printf("  %s select '新加坡 01'\n", prog);
     printf("\n\033[1m配置:\033[0m\n");
     printf("  配置文件: %s\n", CLASH_CONFIG);
+    printf("  订阅链接: ~/%s\n", SUBSCRIBE_FILE);
     printf("  代理端口: 7890 (HTTP/SOCKS5 混合)\n");
     printf("  API 端口: %d\n", CLASH_API_PORT);
     printf("\n\033[1m局域网使用:\033[0m\n");
@@ -651,6 +923,23 @@ int main(int argc, char *argv[])
         } else {
             ret = cmd_select(argv[2]);
         }
+    }
+    else if (strcmp(argv[1], "set-url") == 0) {
+        if (argc < 3) {
+            print_err("请指定订阅链接");
+            ret = -1;
+        } else {
+            ret = cmd_set_url(argv[2]);
+        }
+    }
+    else if (strcmp(argv[1], "show-url") == 0) {
+        ret = cmd_show_url();
+    }
+    else if (strcmp(argv[1], "update") == 0) {
+        ret = cmd_update();
+    }
+    else if (strcmp(argv[1], "update-geo") == 0) {
+        ret = cmd_update_geo();
     }
     else if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "--help") == 0 ||
              strcmp(argv[1], "-h") == 0) {

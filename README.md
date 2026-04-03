@@ -1,6 +1,6 @@
 # Clash 局域网代理控制工具
 
-为嵌入式 Linux 开发者设计的轻量级代理控制 CLI。
+为Linux 设计的轻量级代理控制 CLI。
 
 ## 项目概述
 
@@ -29,40 +29,82 @@
 
 ```
 my_proxy/
-├── clash-ctl       # 可执行文件（控制工具）
+├── clash-ctl       # 可执行文件（控制工具，编译后生成）
 ├── clash-ctl.c    # 源码
 ├── Makefile       # 编译配置
-├── mihomo         # 代理核心（第三方 Go 程序）
-├── Country.mmdb   # GeoIP 数据库（判断 IP 归属地）
+├── mihomo         # 代理核心（需下载，参见下方说明）
+├── Country.mmdb   # GeoIP 数据库
 └── proxy.txt      # 代理配置文件
 ```
 
 ## 快速开始
 
-### 编译
+### 1. 下载 mihomo 核心
+
+```bash
+# 方法一：使用 make（推荐）
+make download
+
+# 方法二：手动下载
+wget https://github.com/MetaCubeX/mihomo/releases/download/v1.19.22/mihomo-linux-amd64-compatible-v1.19.22.gz
+gunzip mihomo-linux-amd64-compatible-v1.19.22.gz
+mv mihomo-linux-amd64-compatible-v1.19.22 mihomo
+chmod +x mihomo
+```
+
+### 2. 编译
 
 ```bash
 make
 ```
 
-### 使用方法
+### 3. 使用
 
 ```bash
 ./clash-ctl help
 ```
 
-可用命令：
+## 命令说明
+
+### 服务控制
 
 | 命令 | 说明 |
 |------|------|
 | `./clash-ctl start` | 启动代理服务 |
 | `./clash-ctl stop` | 停止代理服务 |
-| `./clash-ctl status` | 查看当前节点 |
-| `./clash-ctl list` | 列出所有可用节点 |
-| `./clash-ctl select <节点名>` | 切换到指定节点 |
 | `./clash-ctl restart` | 重启代理服务 |
 
-### 局域网设备配置
+### 状态查询
+
+| 命令 | 说明 |
+|------|------|
+| `./clash-ctl status` | 查看当前节点 |
+| `./clash-ctl list` | 列出所有可用节点 |
+
+### 节点管理
+
+| 命令 | 说明 |
+|------|------|
+| `./clash-ctl select <节点名>` | 切换到指定节点 |
+
+### 订阅管理
+
+| 命令 | 说明 |
+|------|------|
+| `./clash-ctl set-url <链接>` | 设置订阅链接 |
+| `./clash-ctl show-url` | 显示当前订阅链接 |
+| `./clash-ctl update` | 从订阅更新配置 |
+
+**注意**: 每次 `start` 时会自动检查并更新订阅配置。
+
+### 其他
+
+| 命令 | 说明 |
+|------|------|
+| `./clash-ctl update-geo` | 更新 GeoIP 数据库 |
+| `./clash-ctl help` | 显示帮助 |
+
+## 局域网设备配置
 
 **Windows:**
 ```
@@ -77,124 +119,24 @@ export http_proxy="http://服务器IP:7890"
 export https_proxy="http://服务器IP:7890"
 ```
 
-**或者使用环境变量脚本:**
+## 订阅配置示例
+
 ```bash
-source proxy_on.sh   # 开启代理
-source proxy_off.sh  # 关闭代理
-```
+# 设置订阅链接
+./clash-ctl set-url https://your-subscription-url
 
-## 开发记录
+# 手动更新
+./clash-ctl update
 
-### 主要难点及解决方案
-
-#### 1. mihomo 无法找到 MMDB 数据库
-
-**问题描述:**
-```
-Can't find MMDB, start download
-```
-
-mihomo 启动后不断尝试下载 MMDB 文件，即使 `mmdb/Country.mmdb` 存在也无法识别。
-
-**原因分析:**
-- mihomo 需要 `Country.mmdb` 文件在**程序运行目录**（即根目录）
-- 不在 `mmdb/` 子目录中
-
-**解决方案:**
-```bash
-# 将 Country.mmdb 放在项目根目录
-cp mmdb/Country.mmdb ./Country.mmdb
-./mihomo -d . -f proxy.txt
-```
-
-#### 2. HTTP chunked encoding 解析
-
-**问题描述:**
-`cmd_status()` 和 `cmd_list()` 无法正确获取当前节点信息。
-
-**原因分析:**
-mihomo API 使用 HTTP chunked transfer encoding（分块传输编码），响应格式为：
-
-```
-HTTP/1.1 200 OK
-Transfer-Encoding: chunked
-
-321d\r\n              ← 块大小（十六进制 0x321d = 12829）
-{JSON 数据...}\r\n    ← 块内容
-0\r\n                 ← 结束块
-\r\n
-```
-
-**解决方案:**
-实现完整的 chunked encoding 解析器：
-
-```c
-while (1) {
-    char *line_end = strstr(p, "\r\n");
-    *line_end = '\0';
-    int chunk_size = (int)strtol(p, NULL, 16);  // 十六进制解析
-    *line_end = '\r';
-
-    if (chunk_size <= 0) break;
-
-    p = line_end + 2;
-    // 复制 chunk_size 字节的数据
-    memcpy(result + result_len, p, chunk_size);
-    result_len += chunk_size;
-
-    p += chunk_size + 2;  // 跳过数据 + \r\n
-}
-```
-
-#### 3. JSON 结构理解
-
-**问题描述:**
-使用 `strstr()` 查找 `"now"` 字段时，得到的是第一个匹配，而非目标代理组的值。
-
-**原因分析:**
-mihomo API 返回的 JSON 中，多个代理组都有 `now` 字段：
-
-```json
-{
-  "proxies": {
-    "GLOBAL": {"now": "DIRECT", ...},
-    "自动选择": {"now": "🇯🇵日本 02 专", ...},
-    "永雏塔菲的魔法卷轴": {"now": "🇸🇬新加坡 04", ...}
-  }
-}
-```
-
-**解决方案:**
-先定位到目标代理组对象，再在该对象范围内查找 `now` 字段：
-
-```c
-// 1. 找到代理组
-char *group = strstr(json, "\"永雏塔菲的魔法卷轴\"");
-
-// 2. 确定组对象的范围
-char *obj_end = strchr(group, '}');
-
-// 3. 在组范围内查找 now
-char *now = strstr(group, "\"now\"");
-if (now && now < obj_end) {
-    // 安全提取值
-}
-```
-
-#### 4. GeoIP 数据库下载
-
-**问题描述:**
-GitHub 下载被墙，需要通过代理访问。
-
-**解决方案:**
-```bash
-export http_proxy="http://代理服务器:端口"
-wget https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb
+# 启动时会自动更新
+./clash-ctl start
 ```
 
 ## 技术要点
 
 ### 1. POSIX Socket 编程
+
+纯 C 语言实现，无外部依赖（curl、json 库等）。
 
 ```c
 // 创建 socket
@@ -206,40 +148,49 @@ connect(sock, (struct sockaddr *)&server, sizeof(server));
 // 发送请求
 send(sock, request, strlen(request), 0);
 
-// 接收响应（循环读取）
+// 接收响应（支持 chunked encoding）
 while ((r = recv(sock, buf, sizeof(buf)-1, 0)) > 0) {
     total += r;
 }
 ```
 
-### 2. 进程管理
+### 2. HTTP API 通信
+
+mihomo 提供 REST API：
+
+```
+GET  http://127.0.0.1:9090/proxies          # 获取所有代理信息
+PUT  http://127.0.0.1:9090/proxies/<组名>  # 切换节点
+```
+
+### 3. 进程管理
 
 ```c
 // 启动后台进程
-nohup ./mihomo -d . -f proxy.txt > /dev/null 2>&1 &
+nohup ./mihomo -d . -f proxy.txt > clash.log 2>&1 &
 
 // 查找进程
-pid = get_pid_by_name("mihomo.*proxy.txt");
+pid = get_clash_pid();  // 通过 pgrep 实现
 
 // 停止进程
 kill(pid, SIGTERM);
 ```
 
-### 3. REST API 调用
+### 4. HTTP Chunked Encoding
 
-```c
-// GET 请求（查询状态）
-GET /proxies HTTP/1.1
-Host: 127.0.0.1:9090
+mihomo API 使用 chunked transfer encoding，响应格式：
 
-// PUT 请求（切换节点）
-PUT /proxies/永雏塔菲的魔法卷轴 HTTP/1.1
-Content-Type: application/json
+```
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
 
-{"name": "🇭🇰香港 03 专"}
+321d\r\n              ← 块大小（十六进制）
+{JSON 数据...}\r\n    ← 块内容
+0\r\n                 ← 结束块
+\r\n
 ```
 
-## 代理协议说明
+## 代理协议
 
 项目使用三种代理协议（由 mihomo 处理）：
 
@@ -253,27 +204,27 @@ Content-Type: application/json
 
 ### 更新代理配置
 
-直接编辑 `proxy.txt`，然后重启服务：
-
 ```bash
+# 方式一：通过订阅
+./clash-ctl update
+
+# 方式二：手动编辑后重启
 ./clash-ctl restart
 ```
 
 ### 更新 GeoIP 数据库
 
 ```bash
-wget -O Country.mmdb \
-    "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb"
+./clash-ctl update-geo
 ```
 
 ### 日志查看
 
 ```bash
-./mihomo -d . -f proxy.txt
-# 前台运行，Ctrl+C 停止
+tail -f clash.log
 ```
 
-## 原理简述
+## 工作原理
 
 1. **clash-ctl** 通过 HTTP API 与 mihomo 通信，控制启动/停止/切换节点
 2. **mihomo** 监听 7890 端口，接收局域网代理请求

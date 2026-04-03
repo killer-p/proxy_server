@@ -6,16 +6,20 @@
 
 ```
 proxy_server/
-├── clash-ctl       # 可执行文件（编译后生成）
-├── clash-ctl.c    # 源码
-├── Makefile       # 编译配置
-├── mihomo         # 代理核心
-├── Country.mmdb   # GeoIP 数据库
-├── proxy.txt      # 代理配置文件（自动生成）
-├── .clash-url     # 订阅链接存储
-└── profiles/      # mihomo 缓存目录（自动生成）
-    └── sub.yaml   # 订阅节点缓存
+├── src/            # 源码
+│   └── clash-ctl.c
+├── lib/            # 第三方库
+│   └── cjson/      # cJSON 源码
+├── bin/            # 编译产物 + 运行时文件
+│   ├── clash-ctl   # 可执行文件
+│   ├── mihomo      # 代理核心
+│   ├── Country.mmdb # GeoIP 数据库
+│   └── clash.log   # 运行日志
+├── Makefile
+└── README.md
 ```
+
+> `profiles/`（订阅节点缓存）、`proxy.txt`（配置文件）、`.clash-url`（订阅链接）运行时生成在 `bin/` 目录中。
 
 ## 快速开始
 
@@ -28,13 +32,13 @@ make
 ### 2. 配置订阅
 
 ```bash
-./clash-ctl set-url <订阅链接>
+./bin/clash-ctl set-url <订阅链接>
 ```
 
 ### 3. 启动
 
 ```bash
-./clash-ctl start
+./bin/clash-ctl start
 ```
 
 ### 更新二进制文件
@@ -50,63 +54,63 @@ make
 
 | 命令 | 说明 |
 |------|------|
-| `./clash-ctl start` | 启动代理服务（自动更新订阅配置） |
-| `./clash-ctl stop` | 停止代理服务 |
-| `./clash-ctl restart` | 重启代理服务 |
+| `./bin/clash-ctl start` | 启动代理服务（自动更新订阅配置） |
+| `./bin/clash-ctl stop` | 停止代理服务 |
+| `./bin/clash-ctl restart` | 重启代理服务 |
 
 ### 状态查询
 
 | 命令 | 说明 |
 |------|------|
-| `./clash-ctl status` | 查看当前选中节点（自动追溯真实节点） |
-| `./clash-ctl list` | 列出所有可用节点（带编号） |
+| `./bin/clash-ctl status` | 查看当前选中节点（自动追溯真实节点） |
+| `./bin/clash-ctl list` | 列出所有可用节点（带编号） |
 
 ### 节点管理
 
 | 命令 | 说明 |
 |------|------|
-| `./clash-ctl select <编号>` | 按编号切换节点 |
-| `./clash-ctl select <节点名>` | 按名称切换节点 |
+| `./bin/clash-ctl select <编号>` | 按编号切换节点 |
+| `./bin/clash-ctl select <节点名>` | 按名称切换节点 |
 
 ### 订阅管理
 
 | 命令 | 说明 |
 |------|------|
-| `./clash-ctl set-url <链接>` | 设置订阅链接 |
-| `./clash-ctl show-url` | 显示当前订阅链接 |
-| `./clash-ctl update` | 手动更新配置文件 |
+| `./bin/clash-ctl set-url <链接>` | 设置订阅链接 |
+| `./bin/clash-ctl show-url` | 显示当前订阅链接 |
+| `./bin/clash-ctl update` | 手动更新配置文件 |
 
 ### 其他
 
 | 命令 | 说明 |
 |------|------|
-| `./clash-ctl update-geo` | 更新 GeoIP 数据库 |
-| `./clash-ctl help` | 显示帮助 |
+| `./bin/clash-ctl update-geo` | 更新 GeoIP 数据库 |
+| `./bin/clash-ctl help` | 显示帮助 |
 
 ## 使用示例
 
 ```bash
 # 设置订阅
-./clash-ctl set-url https://your-subscription-url
+./bin/clash-ctl set-url https://your-subscription-url
 
 # 启动服务
-./clash-ctl start
+./bin/clash-ctl start
 
 # 查看可用节点
-./clash-ctl list
+./bin/clash-ctl list
 # 输出：
 #    1. 节点A
 #    2. 节点B
 #    ...
 
 # 按编号切换节点（推荐）
-./clash-ctl select 5
+./bin/clash-ctl select 5
 
 # 按名称切换节点
-./clash-ctl select "🇭🇰香港 03 专"
+./bin/clash-ctl select "🇭🇰香港 03 专"
 
 # 查看当前状态
-./clash-ctl status
+./bin/clash-ctl status
 ```
 
 ## 局域网设备配置
@@ -181,7 +185,23 @@ proxy-groups:
       - DIRECT
 ```
 
-### 3. REST API 通信
+### 3. cJSON 解析 API 响应
+
+clash-ctl 通过 cJSON（MIT 协议，单文件源码）解析 mihomo REST API 返回的 JSON：
+
+```c
+cJSON *root = cJSON_Parse(json);
+cJSON *proxies = cJSON_GetObjectItem(root, "proxies");
+for (cJSON *item = proxies->child; item != NULL; item = item->next) {
+    cJSON *type = cJSON_GetObjectItem(item, "type");
+    if (strcmp(type->valuestring, "Selector") == 0) { ... }
+}
+cJSON_Delete(root);  // 记得释放
+```
+
+无需任何外部库，cJSON 源码直接放在 `lib/` 目录下。
+
+### 4. REST API 通信
 
 mihomo 监听 `127.0.0.1:9090`，clash-ctl 通过 HTTP API 控制：
 
@@ -226,16 +246,16 @@ clash-ctl 从响应中提取 JSON 数据块并拼接。
 ### 更新订阅
 
 ```bash
-./clash-ctl set-url <新链接>   # 保存链接
-./clash-ctl update            # 更新配置
-./clash-ctl restart            # 重启生效
+./bin/clash-ctl set-url <新链接>   # 保存链接
+./bin/clash-ctl update            # 更新配置
+./bin/clash-ctl restart            # 重启生效
 ```
 
 ### 更新 GeoIP
 
 ```bash
-./clash-ctl update-geo
-./clash-ctl restart
+./bin/clash-ctl update-geo
+./bin/clash-ctl restart
 ```
 
 ### 查看日志

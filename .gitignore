@@ -1,5 +1,4 @@
-proxy.txt
-profiles
-*.db
-*.log
 *.clash-url
+bin/*.db
+bin/proxy.txt
+bin/profiles

@@ -32,14 +32,16 @@
 #include <time.h>
 #include <ctype.h>
 
+#include "lib/cjson/cJSON.h"
+
 /* ====== 配置常量 ====== */
 #define CLASH_API_HOST   "127.0.0.1"
 #define CLASH_API_PORT   9090
 #define CLASH_CONFIG     "proxy.txt"
-#define CLASH_BIN        "./mihomo"
+#define CLASH_BIN        "mihomo"
 #define CLASH_LOG_FILE   "clash.log"
 #define SUBSCRIBE_FILE   ".clash-url"
-#define GEO_DB_URL       "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb"
+#define GEO_DB_URL       "https://github.com/Loyalsoldier/geoip/releases/download/latest/Country.mmdb"
 
 /* ====== 全局变量 ====== */
 int api_port = CLASH_API_PORT;
@@ -388,7 +390,7 @@ int cmd_update(void)
         "    type: http\n"
         "    url: \"%s\"\n"
         "    interval: 3600\n"
-        "    path: ./profiles/sub.yaml\n"
+        "    path: profiles/sub.yaml\n"
         "    health-check:\n"
         "      enable: true\n"
         "      url: http://www.gstatic.com/generate_204\n"
@@ -557,6 +559,7 @@ int cmd_restart(void)
 /*
  * 状态显示：查看 Clash 运行状态
  */
+
 /* 从 /proxies 获取指定组/proxy 的 now 值 */
 static int get_now_value(const char *name, char *out, size_t out_size)
 {
@@ -564,65 +567,62 @@ static int get_now_value(const char *name, char *out, size_t out_size)
     int code = http_request("GET", "/proxies", NULL, &json);
     if (code != 200 || !json) { free(json); return -1; }
 
-    /* 定位到 "proxies":{ 块，避免匹配到 proxy 列表中的名称 */
-    char *proxies_start = strstr(json, "\"proxies\":{");
-    if (!proxies_start) { free(json); return -1; }
-
-    char key[300];
-    snprintf(key, sizeof(key), "\"%s\":{", name);
-    char *g = strstr(proxies_start, key);
-    if (!g) { free(json); return -1; }
-
-    char *now = strstr(g, "\"now\"");
-    if (!now) { free(json); return -1; }
-
-    char *colon = strchr(now, ':');
-    if (!colon) { free(json); return -1; }
-    char *q = colon + 1;
-    while (*q == ' ' || *q == '"') q++;
-    char *end = strchr(q, '"');
-    if (!end || (size_t)(end - q) >= out_size) { free(json); return -1; }
-
-    int len = end - q;
-    memcpy(out, q, len);
-    out[len] = '\0';
+    cJSON *root = cJSON_Parse(json);
     free(json);
+    if (!root) return -1;
+
+    cJSON *proxies = cJSON_GetObjectItem(root, "proxies");
+    if (!cJSON_IsObject(proxies)) { cJSON_Delete(root); return -1; }
+
+    cJSON *item = cJSON_GetObjectItem(proxies, name);
+    if (!item) { cJSON_Delete(root); return -1; }
+
+    cJSON *now = cJSON_GetObjectItem(item, "now");
+    if (!cJSON_IsString(now) || !now->valuestring) {
+        cJSON_Delete(root);
+        return -1;
+    }
+
+    strncpy(out, now->valuestring, out_size - 1);
+    out[out_size - 1] = '\0';
+    cJSON_Delete(root);
     return 0;
 }
 
-/* 检查 name 在 /proxies 中是否是组（即 type 不是节点类型） */
+/* 检查 name 在 /proxies 中是否是组（type 不是节点类型） */
 static int is_proxy_group(const char *name)
 {
+    static const char *node_types[] = {
+        "Vless", "Vmess", "Shadowsocks", "ShadowsocksR",
+        "Snell", "Http", "Tun", "WireGuard", "Hysteria2", "Tuic", "Compatible"
+    };
+    int nt = sizeof(node_types) / sizeof(node_types[0]);
+
     char *json = NULL;
     int code = http_request("GET", "/proxies", NULL, &json);
     if (code != 200 || !json) { free(json); return 0; }
 
-    char key[300];
-    snprintf(key, sizeof(key), "\"%s\":{", name);
-    char *g = strstr(json, key);
-    int is_group = 0;
-    if (g) {
-        char *type = strstr(g, "\"type\":\"");
-        if (type) {
-            type += 8;
-            char *type_end = strchr(type, '"');
-            if (type_end) {
-                char t[64];
-                int t_len = type_end - type;
-                if (t_len < (int)sizeof(t)) {
-                    memcpy(t, type, t_len);
-                    t[t_len] = '\0';
-                    const char *node_types[] = { "Vless", "Vmess", "Shadowsocks", "ShadowsocksR", "Snell", "Http", "Tun", "WireGuard", "Hysteria2", "Tuic", "Compatible" };
-                    int nt = sizeof(node_types) / sizeof(node_types[0]);
-                    is_group = 1;
-                    for (int i = 0; i < nt; i++) {
-                        if (strcmp(t, node_types[i]) == 0) { is_group = 0; break; }
-                    }
+    cJSON *root = cJSON_Parse(json);
+    free(json);
+    if (!root) return 0;
+
+    cJSON *proxies = cJSON_GetObjectItem(root, "proxies");
+    if (!cJSON_IsObject(proxies)) { cJSON_Delete(root); return 0; }
+
+    cJSON *item = cJSON_GetObjectItem(proxies, name);
+    int is_group = 1;
+    if (item) {
+        cJSON *type = cJSON_GetObjectItem(item, "type");
+        if (cJSON_IsString(type)) {
+            for (int i = 0; i < nt; i++) {
+                if (strcmp(type->valuestring, node_types[i]) == 0) {
+                    is_group = 0;
+                    break;
                 }
             }
         }
     }
-    free(json);
+    cJSON_Delete(root);
     return is_group;
 }
 
@@ -665,80 +665,49 @@ int cmd_list(void)
         return -1;
     }
 
-    /* /proxies 返回 {"proxies": {...}, ...}
-     * 顶层每个键是一个 proxy 或 proxy-group
-     * 真正的代理节点 type 为 Vless, Vmess, Shadowsocks, Trojan, Snell, Hysteria 等
-     * 代理组的 type 为 Proxy, Selector, URLTest, Direct, Reject, Pass, RejectDrop
-     * 我们只显示代理节点
-     */
+    cJSON *root = cJSON_Parse(json);
+    free(json);
+    if (!root) {
+        print_err("API 响应解析失败");
+        return -1;
+    }
+
     static const char *skip_types[] = {
         "Proxy", "Selector", "URLTest", "Direct",
-        "Reject", "Pass", "RejectDrop", "Reject ", NULL
+        "Reject", "Pass", "RejectDrop", NULL
     };
+
+    cJSON *proxies = cJSON_GetObjectItem(root, "proxies");
+    if (!cJSON_IsObject(proxies)) {
+        cJSON_Delete(root);
+        print_err("API 响应格式错误");
+        return -1;
+    }
 
     printf("\n\033[1;33m可用节点列表:\033[0m\n");
     printf("----------------------------------------\n");
 
     int idx = 1;
-    char *p = json;
+    for (cJSON *item = proxies->child; item != NULL; item = item->next) {
+        if (!cJSON_IsObject(item)) continue;
 
-    while ((p = strstr(p, "\"name\":\"")) != NULL) {
-        p += 8;  /* 跳过 "\"name\":\"" */
-        char *ne = p;
-        while (*ne && *ne != '"') ne++;
-        if (!*ne || ne == p) {
-            p++;
-            continue;
-        }
+        cJSON *type = cJSON_GetObjectItem(item, "type");
+        if (!cJSON_IsString(type)) continue;
 
-        size_t name_len = ne - p;
-        if (name_len >= 256) {
-            p++;
-            continue;
-        }
-
-        char name[256];
-        strncpy(name, p, name_len);
-        name[name_len] = '\0';
-
-        /* 找这个 key 的 type */
-        char *after_name = ne;
-        char *type_k = strstr(after_name, "\"type\":\"");
-        if (!type_k || (type_k - json) >= (ne - json) + 500) {
-            p++;
-            continue;
-        }
-        type_k += 8;  /* 跳过 "\"type\":\"" */
-        char *type_end = type_k;
-        while (*type_end && *type_end != '"') type_end++;
-        size_t type_len = type_end - type_k;
-        if (type_len >= 64) {
-            p++;
-            continue;
-        }
-
-        char type[64];
-        strncpy(type, type_k, type_len);
-        type[type_len] = '\0';
-
-        /* 检查是否应该跳过 */
         int skip = 0;
         for (int i = 0; skip_types[i]; i++) {
-            if (strcmp(type, skip_types[i]) == 0) {
+            if (strcmp(type->valuestring, skip_types[i]) == 0) {
                 skip = 1;
                 break;
             }
         }
+        if (skip) continue;
 
-        if (!skip && name_len > 0) {
-            printf("  %2d. %s\n", idx++, name);
-        }
-
-        p = ne + 1;
+        printf("  %2d. %s\n", idx++, item->string);
     }
 
     printf("----------------------------------------\n");
-    free(json);
+    cJSON_Delete(root);
 
     cmd_status();
     return 0;
@@ -781,53 +750,46 @@ static int get_node_name_by_index(int index, char *out_name, size_t out_size)
 {
     char *json = NULL;
     int code = http_request("GET", "/proxies", NULL, &json);
-    if (code != 200 || !json) {
-        free(json);
-        return -1;
-    }
+    if (code != 200 || !json) { free(json); return -1; }
 
-    /* 提取所有节点名称和类型 */
-    typedef struct { char name[256]; char type[64]; } node_t;
-    node_t nodes[256];
-    int count = 0;
-
-    const char *p = json;
-    const char *skip[] = { "Proxy", "Selector", "URLTest", "Direct", "Reject", "Pass", "RejectDrop" };
-    int skip_n = sizeof(skip) / sizeof(skip[0]);
-
-    while (count < 256) {
-        const char *name_tag = strstr(p, "\"name\":\"");
-        if (!name_tag) break;
-        name_tag += 8;
-        const char *name_end = strchr(name_tag, '"');
-        if (!name_end || (size_t)(name_end - name_tag) >= sizeof(nodes[count].name)) { p = name_tag; continue; }
-        int name_len = name_end - name_tag;
-        memcpy(nodes[count].name, name_tag, name_len);
-        nodes[count].name[name_len] = '\0';
-
-        const char *type_tag = strstr(name_end, "\"type\":\"");
-        if (!type_tag) { p = name_end; continue; }
-        type_tag += 8;
-        const char *type_end = strchr(type_tag, '"');
-        if (!type_end || (size_t)(type_end - type_tag) >= sizeof(nodes[count].type)) { p = name_end; continue; }
-        int type_len = type_end - type_tag;
-        memcpy(nodes[count].type, type_tag, type_len);
-        nodes[count].type[type_len] = '\0';
-
-        int is_group = 0;
-        for (int i = 0; i < skip_n; i++) {
-            if (strcmp(nodes[count].type, skip[i]) == 0) { is_group = 1; break; }
-        }
-        if (!is_group) count++;
-        p = type_end;
-    }
-
+    cJSON *root = cJSON_Parse(json);
     free(json);
+    if (!root) return -1;
 
-    if (index < 1 || index > count) return -1;
-    strncpy(out_name, nodes[index - 1].name, out_size - 1);
-    out_name[out_size - 1] = '\0';
-    return 0;
+    cJSON *proxies = cJSON_GetObjectItem(root, "proxies");
+    if (!cJSON_IsObject(proxies)) { cJSON_Delete(root); return -1; }
+
+    static const char *skip_types[] = {
+        "Proxy", "Selector", "URLTest", "Direct", "Reject", "Pass", "RejectDrop", NULL
+    };
+
+    int idx = 1;
+    for (cJSON *item = proxies->child; item != NULL; item = item->next) {
+        if (!cJSON_IsObject(item)) continue;
+
+        cJSON *type = cJSON_GetObjectItem(item, "type");
+        if (!cJSON_IsString(type)) continue;
+
+        int skip = 0;
+        for (int i = 0; skip_types[i]; i++) {
+            if (strcmp(type->valuestring, skip_types[i]) == 0) {
+                skip = 1;
+                break;
+            }
+        }
+        if (skip) continue;
+
+        if (idx == index) {
+            strncpy(out_name, item->string, out_size - 1);
+            out_name[out_size - 1] = '\0';
+            cJSON_Delete(root);
+            return 0;
+        }
+        idx++;
+    }
+
+    cJSON_Delete(root);
+    return -1;
 }
 
 int cmd_select(const char *node_name)

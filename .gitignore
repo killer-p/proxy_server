@@ -2,3 +2,4 @@ proxy.txt
 profiles
 *.db
 *.log
+*.clash-url

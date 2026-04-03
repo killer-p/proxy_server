@@ -274,7 +274,7 @@ pid_t get_clash_pid(void)
 char* get_subscription_url(void)
 {
     char path[512];
-    snprintf(path, sizeof(path), "%s/%s", getenv("HOME") ? getenv("HOME") : ".", SUBSCRIBE_FILE);
+    snprintf(path, sizeof(path), "%s/%s", getenv("PWD") ? getenv("PWD") : ".", SUBSCRIBE_FILE);
 
     FILE *fp = fopen(path, "r");
     if (!fp) return NULL;
@@ -300,7 +300,7 @@ int cmd_set_url(const char *url)
     }
 
     char path[512];
-    snprintf(path, sizeof(path), "%s/%s", getenv("HOME") ? getenv("HOME") : ".", SUBSCRIBE_FILE);
+    snprintf(path, sizeof(path), "%s/%s", getenv("PWD") ? getenv("PWD") : ".", SUBSCRIBE_FILE);
 
     FILE *fp = fopen(path, "w");
     if (!fp) {
@@ -311,7 +311,7 @@ int cmd_set_url(const char *url)
     fprintf(fp, "%s\n", url);
     fclose(fp);
 
-    printf("订阅链接已保存\n");
+    printf("订阅链接已保存到：%s\n", path);
     printf("  链接: %s\n", url);
     return 0;
 }

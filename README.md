@@ -32,13 +32,14 @@ make
 ### 2. 配置订阅
 
 ```bash
-./bin/clash-ctl set-url <订阅链接>
+cd bin
+./clash-ctl set-url <订阅链接>
 ```
 
 ### 3. 启动
 
 ```bash
-./bin/clash-ctl start
+./clash-ctl start
 ```
 
 ### 更新二进制文件
@@ -54,63 +55,67 @@ make
 
 | 命令 | 说明 |
 |------|------|
-| `./bin/clash-ctl start` | 启动代理服务（自动更新订阅配置） |
-| `./bin/clash-ctl stop` | 停止代理服务 |
-| `./bin/clash-ctl restart` | 重启代理服务 |
+| `./clash-ctl start` | 启动代理服务（自动更新订阅配置） |
+| `./clash-ctl stop` | 停止代理服务 |
+| `./clash-ctl restart` | 重启代理服务 |
 
 ### 状态查询
 
 | 命令 | 说明 |
 |------|------|
-| `./bin/clash-ctl status` | 查看当前选中节点（自动追溯真实节点） |
-| `./bin/clash-ctl list` | 列出所有可用节点（带编号） |
+| `./clash-ctl status` | 查看当前选中节点（自动追溯真实节点） |
+| `./clash-ctl list` | 列出所有可用节点（带编号） |
 
 ### 节点管理
 
 | 命令 | 说明 |
 |------|------|
-| `./bin/clash-ctl select <编号>` | 按编号切换节点 |
-| `./bin/clash-ctl select <节点名>` | 按名称切换节点 |
+| `./clash-ctl select <编号>` | 按编号切换节点 |
+| `./clash-ctl select <节点名>` | 按名称切换节点 |
 
 ### 订阅管理
 
 | 命令 | 说明 |
 |------|------|
-| `./bin/clash-ctl set-url <链接>` | 设置订阅链接 |
-| `./bin/clash-ctl show-url` | 显示当前订阅链接 |
-| `./bin/clash-ctl update` | 手动更新配置文件 |
+| `./clash-ctl set-url <链接>` | 设置订阅链接 |
+| `./clash-ctl show-url` | 显示当前订阅链接 |
+| `./clash-ctl update` | 手动更新配置文件 |
 
 ### 其他
 
 | 命令 | 说明 |
 |------|------|
-| `./bin/clash-ctl update-geo` | 更新 GeoIP 数据库 |
-| `./bin/clash-ctl help` | 显示帮助 |
+| `./clash-ctl update-geo` | 更新 GeoIP 数据库 |
+| `./clash-ctl help` | 显示帮助 |
 
 ## 使用示例
 
 ```bash
+
+#进入bin目录
+cd bin
+
 # 设置订阅
-./bin/clash-ctl set-url https://your-subscription-url
+./clash-ctl set-url https://your-subscription-url
 
 # 启动服务
-./bin/clash-ctl start
+./clash-ctl start
 
 # 查看可用节点
-./bin/clash-ctl list
+./clash-ctl list
 # 输出：
 #    1. 节点A
 #    2. 节点B
 #    ...
 
 # 按编号切换节点（推荐）
-./bin/clash-ctl select 5
+./clash-ctl select 5
 
 # 按名称切换节点
-./bin/clash-ctl select "🇭🇰香港 03 专"
+./clash-ctl select "🇭🇰香港 03 专"
 
 # 查看当前状态
-./bin/clash-ctl status
+./clash-ctl status
 ```
 
 ## 局域网设备配置
@@ -246,16 +251,18 @@ clash-ctl 从响应中提取 JSON 数据块并拼接。
 ### 更新订阅
 
 ```bash
-./bin/clash-ctl set-url <新链接>   # 保存链接
-./bin/clash-ctl update            # 更新配置
-./bin/clash-ctl restart            # 重启生效
+cd bin
+./clash-ctl set-url <新链接>   # 保存链接
+./clash-ctl update            # 更新配置
+./clash-ctl restart            # 重启生效
 ```
 
 ### 更新 GeoIP
 
 ```bash
-./bin/clash-ctl update-geo
-./bin/clash-ctl restart
+cd bin
+./clash-ctl update-geo
+./clash-ctl restart
 ```
 
 ### 查看日志

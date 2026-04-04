@@ -25,6 +25,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/time.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -663,6 +666,104 @@ int cmd_restart(void)
 }
 
 /*
+ * 工具函数：流量格式化
+ * bytes: 字节数，输出 Human-readable 字符串
+ */
+static void format_bytes(long long bytes, char *out, size_t size)
+{
+    if (bytes < 0)      { snprintf(out, size, "N/A"); return; }
+    if (bytes < 1024)                { snprintf(out, size, "%lld B", bytes); return; }
+    if (bytes < 1024*1024)           { snprintf(out, size, "%.1f KB", bytes/1024.0); return; }
+    if (bytes < 1024*1024*1024)     { snprintf(out, size, "%.2f MB", bytes/(1024.0*1024)); return; }
+    snprintf(out, size, "%.02f GB", bytes/(1024.0*1024*1024));
+}
+
+/*
+ * 流量监控：实时显示累计总流量 + 瞬时速率
+ * 用户按 Ctrl+C 退出
+ */
+static void traffic_monitor(void)
+{
+    struct sockaddr_in server;
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_port = htons(api_port);
+    inet_pton(AF_INET, CLASH_API_HOST, &server.sin_addr);
+
+    int tsock = socket(AF_INET, SOCK_STREAM, 0);
+    if (tsock < 0) return;
+
+    /* SIGINT 由系统处理（Ctrl+C 自动终止进程），此处不拦截 */
+    if (connect(tsock, (struct sockaddr *)&server, sizeof(server)) != 0) {
+        close(tsock);
+        return;
+    }
+
+    const char *req = "GET /traffic HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n";
+    send(tsock, req, strlen(req), 0);
+
+    printf("\n  \033[1;33m按 Ctrl+C 退出\033[0m\n");
+    printf("  %-12s %-12s   %-12s %s\n", "↓实时", "↑实时", "↓累计", "↑累计");
+    printf("  --------------------------------------------------\n");
+
+    char recv_buf[1024];
+    char line_buf[1024];
+    int line_len = 0;
+    long long total_up = 0, total_down = 0;
+
+    while (1) {
+        fd_set rset;
+        FD_ZERO(&rset);
+        FD_SET(tsock, &rset);
+        struct timeval tv = {1, 0};
+        int sr = select(tsock + 1, &rset, NULL, NULL, &tv);
+
+        if (sr < 0) break;
+        if (sr == 0) continue;  /* 超时，继续等待 */
+
+        int r = recv(tsock, recv_buf, sizeof(recv_buf) - 1, 0);
+        if (r <= 0) break;  /* 连接断开或 Ctrl+C */
+
+        for (int i = 0; i < r; i++) {
+            if (recv_buf[i] == '\n') {
+                line_buf[line_len] = '\0';
+                if (line_len > 0) {
+                    cJSON *root = cJSON_Parse(line_buf);
+                    if (root) {
+                        cJSON *ut = cJSON_GetObjectItem(root, "upTotal");
+                        cJSON *dt = cJSON_GetObjectItem(root, "downTotal");
+                        cJSON *u  = cJSON_GetObjectItem(root, "up");
+                        cJSON *d  = cJSON_GetObjectItem(root, "down");
+                        if (cJSON_IsNumber(ut)) total_up   = (long long)ut->valuedouble;
+                        if (cJSON_IsNumber(dt)) total_down = (long long)dt->valuedouble;
+
+                        char up_total[16], down_total[16], up_rate[16], down_rate[16];
+                        long long ur = cJSON_IsNumber(u) ? (long long)u->valuedouble : 0;
+                        long long dr = cJSON_IsNumber(d) ? (long long)d->valuedouble : 0;
+                        format_bytes(total_up,   up_total,   sizeof(up_total));
+                        format_bytes(total_down, down_total, sizeof(down_total));
+                        format_bytes(ur,        up_rate,    sizeof(up_rate));
+                        format_bytes(dr,        down_rate,  sizeof(down_rate));
+
+                        printf("  \033[1;36m↓ %s\033[0m  \033[1;36m↑ %s\033[0m  (已用 ↓ %s  ↑ %s)\n",
+                               down_rate[0]=='N' ? "0 B" : down_rate,
+                               up_rate[0]=='N' ? "0 B" : up_rate,
+                               down_total, up_total);
+                        fflush(stdout);
+                        cJSON_Delete(root);
+                    }
+                }
+                line_len = 0;
+            } else if (line_len < (int)sizeof(line_buf) - 1) {
+                line_buf[line_len++] = recv_buf[i];
+            }
+        }
+    }
+
+    close(tsock);
+}
+
+/*
  * 状态显示：查看 Clash 运行状态
  */
 
@@ -753,6 +854,7 @@ int cmd_status(void)
     }
 
     printf("\033[1;36m当前节点:\033[0m %s\n", current);
+    traffic_monitor();
     return 0;
 }
 

@@ -42,6 +42,7 @@
 #define CLASH_LOG_FILE   "clash.log"
 #define SUBSCRIBE_FILE   ".clash-url"
 #define GEO_DB_URL       "https://github.com/Loyalsoldier/geoip/releases/download/latest/Country.mmdb"
+#define LOG_CHECK_LINES  100   // 启动后扫描日志末尾行数
 
 /* ====== 全局变量 ====== */
 int api_port = CLASH_API_PORT;
@@ -462,6 +463,54 @@ int is_clash_running(void)
 }
 
 /*
+ * 日志检查：读取日志文件末尾 N 行
+ * 通过 exec_cmd 调用 tail 命令，tail 是 GNU coreutils 内置的，无需额外依赖
+ * 返回: malloc 分配的字符串，需要手动 free
+ */
+static char* read_log_tail(const char *log_path, int n)
+{
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "tail -n %d '%s' 2>/dev/null", n, log_path);
+    return exec_cmd(cmd);
+}
+
+/*
+ * 日志检查：扫描日志内容中的 error 和 warning 行
+ * log_content: 日志文本（多行）
+ * err_lines: 输出数组，每项最多 511 字符
+ * max: err_lines 最大条目数
+ * 返回: 错误/warning 行数量
+ */
+static int scan_log_errors(const char *log_content, char err_lines[][512], int max)
+{
+    int count = 0;
+    if (!log_content) return 0;
+
+    const char *p = log_content;
+    while (*p && count < max) {
+        const char *err  = strstr(p, "level=error");
+        const char *warn = strstr(p, "level=warning");
+        const char *match = NULL;
+        if (err && (!warn || err < warn)) match = err;
+        else if (warn) match = warn;
+
+        if (!match) break;
+
+        const char *line_start = match;
+        const char *line_end = strchr(match, '\n');
+        if (!line_end) line_end = line_start + strlen(line_start);
+
+        int len = line_end - line_start;
+        if (len > 511) len = 511;
+        strncpy(err_lines[count], line_start, len);
+        err_lines[count][len] = '\0';
+        count++;
+        p = line_end;
+    }
+    return count;
+}
+
+/*
  * 进程管理：启动 Clash
  */
 int cmd_start(void)
@@ -508,17 +557,74 @@ int cmd_start(void)
 
     /* 等待 Clash 启动 */
     print_info("正在启动 Clash...");
-    sleep(2);
+    sleep(3);
+
+    /* ---- 日志错误扫描 ---- */
+    char *log_tail = read_log_tail(CLASH_LOG_FILE, LOG_CHECK_LINES);
+    int err_count = 0;
+    char err_lines[20][512];
+    if (log_tail && *log_tail) {
+        err_count = scan_log_errors(log_tail, err_lines, 20);
+    }
+    free(log_tail);
+
+    /* ---- API 健康检查 ---- */
+    char *api_json = NULL;
+    int api_code = http_request("GET", "/proxies", NULL, &api_json);
+    int api_ok = (api_code == 200 && api_json != NULL);
+    free(api_json);
+
+    /* ---- Provider 节点检查 ---- */
+    int provider_ok = 0;
+    if (api_ok) {
+        char *prov_json = NULL;
+        int prov_code = http_request("GET", "/providers/proxies/sub", NULL, &prov_json);
+        if (prov_code == 200 && prov_json) {
+            cJSON *root = cJSON_Parse(prov_json);
+            if (root) {
+                cJSON *proxies = cJSON_GetObjectItem(root, "proxies");
+                if (cJSON_IsArray(proxies) && cJSON_GetArraySize(proxies) > 0) {
+                    provider_ok = 1;
+                }
+                cJSON_Delete(root);
+            }
+        }
+        free(prov_json);
+    }
 
     /* 验证启动成功 */
-    if (is_clash_running()) {
-        print_ok("Clash 启动成功");
+    if (api_ok && provider_ok) {
+        if (err_count > 0) {
+            print_warn("mihomo 已启动但存在以下问题：");
+            for (int i = 0; i < err_count; i++) {
+                printf("  %s\n", err_lines[i]);
+            }
+            printf("请查看 %s 了解详情\n", CLASH_LOG_FILE);
+        }
+        print_ok("mihomo 启动成功");
         printf("  - HTTP/SOCKS5 代理: 0.0.0.0:7890\n");
         printf("  - 控制面板: http://127.0.0.1:9090\n");
         printf("\n局域网其他设备设置代理:\n");
         printf("  地址: http://<本机IP>:7890\n");
         printf("  类型: HTTP\n");
         return 0;
+    } else if (is_clash_running()) {
+        /* 进程存在但初始化失败，清理残留进程 */
+        pid_t pid = get_clash_pid();
+        if (pid > 0) kill(pid, SIGTERM);
+        print_err("mihomo 启动失败");
+        if (!provider_ok) {
+            print_err("订阅配置无效或获取失败，请检查订阅链接是否正确");
+            printf("  订阅链接: %s\n", url ? url : "(未设置)");
+        }
+        if (err_count > 0) {
+            printf("  日志中的错误：\n");
+            for (int i = 0; i < err_count; i++) {
+                printf("  %s\n", err_lines[i]);
+            }
+        }
+        printf("  请查看 %s 了解详情\n", CLASH_LOG_FILE);
+        return -1;
     } else {
         print_err("启动失败，请检查 " CLASH_LOG_FILE);
         return -1;

@@ -19,11 +19,11 @@ proxy_server/
 └── README.md
 ```
 
-> `profiles/`（订阅节点缓存）、`proxy.txt`（配置文件）、`.clash-url`（订阅链接）运行时生成在 `bin/` 目录中。
+> `profiles/`（订阅节点缓存）、`proxy.txt`（mihomo配置文件）、`.clash-url`（订阅链接）运行时生成在 `bin/` 目录中。
 
 ## 快速开始
 
-### 1. 编译
+### 1. 编译(可选，也提供了bin/clash-ctl 可执行文件)
 
 ```bash
 make
@@ -137,7 +137,7 @@ export https_proxy="http://服务器IP:7890"
 **Android / iOS:**
 在代理 App 中配置 HTTP 代理，地址同上。
 
-## 技术要点
+## 进阶
 
 ### 1. 纯 POSIX Socket 实现
 
@@ -245,6 +245,10 @@ Transfer-Encoding: chunked
 ```
 
 clash-ctl 从响应中提取 JSON 数据块并拼接。
+
+### 6. 导入订阅节点文件
+
+将你自己的节点订阅文件 xxx.yaml 拷贝到/bin/prifiles/sub.yaml
 
 ## 维护说明
 

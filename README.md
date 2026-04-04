@@ -261,8 +261,25 @@ clash-ctl 从响应中提取 JSON 数据块并拼接。
 ### 查看日志
 
 ```bash
-tail -f clash.log
+tail -f bin/clash.log
 ```
+
+### 自动化测试
+
+使用测试脚本验证完整流程：
+
+```bash
+# 方式一：命令行传入订阅链接
+./test/test_run.sh <订阅链接>
+
+# 方式二：在脚本顶部编辑 SUB_URL 后直接执行
+./test/test_run.sh
+
+# 方式三：环境变量传入
+SUB_URL=<订阅链接> ./test_run.sh
+```
+
+测试流程：编译 → 设置订阅 → 启动 → Google 连通性测试 → 停止。每一步独立记录日志到 `test/logs/` 目录，结束后生成汇总报告。
 
 ## 注意事项
 

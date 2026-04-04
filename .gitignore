@@ -2,3 +2,5 @@
 bin/*.db
 bin/proxy.txt
 bin/profiles
+bin/*.log
+test/logs

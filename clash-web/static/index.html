@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>clash-web</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d1117;
+  --bg2: #161b22;
+  --bg3: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --green: #39d353;
+  --red: #f85149;
+  --blue: #58a6ff;
+  --purple: #f778ba;
+  --yellow: #e3b341;
+  --glow-green: 0 0 8px #39d35388;
+  --glow-blue: 0 0 8px #58a6ff88;
+  --glow-purple: 0 0 8px #f778ba88;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ============ 布局 ============ */
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* ============ 头部 ============ */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--green);
+  text-shadow: var(--glow-green);
+  letter-spacing: 2px;
+}
+
+.logo span { color: var(--text-dim); }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.dot.run { background: var(--green); box-shadow: var(--glow-green); animation: pulse 2s infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ============ 按钮 ============ */
+.btn {
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg3);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn:hover { background: var(--border); }
+.btn.active { border-color: var(--green); color: var(--green); }
+.btn.start-btn { border-color: var(--green); color: var(--green); }
+.btn.start-btn:hover { background: #39d35322; }
+.btn.stop-btn { border-color: var(--red); color: var(--red); }
+.btn.stop-btn:hover { background: #f8514922; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ============ 卡片 ============ */
+.cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.card-title {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.card.wide { grid-column: 1 / -1; }
+
+/* ============ 状态数字 ============ */
+.stat-big {
+  font-size: 28px;
+  font-weight: bold;
+  color: var(--green);
+  text-shadow: var(--glow-green);
+  white-space: nowrap;
+}
+.stat-label { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+.stat-row {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+/* ============ 流量显示 ============ */
+.traffic-live {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.traffic-label { font-size: 11px; color: var(--text-dim); margin-bottom: 2px; }
+.traffic-up { color: var(--green); }
+.traffic-down { color: var(--blue); }
+.traffic-rate { color: var(--text-dim); font-size: 12px; margin-left: 8px; }
+
+.traffic-block { margin-bottom: 12px; }
+
+.traffic-block .rate {
+  font-size: 22px;
+  font-weight: bold;
+  text-shadow: var(--glow-blue);
+  white-space: nowrap;
+}
+.traffic-block .rate.up { color: var(--green); text-shadow: var(--glow-green); }
+.traffic-block .rate.down { color: var(--blue); text-shadow: var(--glow-blue); }
+
+.traffic-block .total {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* ============ 节点列表 ============ */
+.node-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  gap: 10px;
+  border: 1px solid transparent;
+}
+.node-item:hover { background: var(--bg3); }
+.node-item.active {
+  background: #39d35315;
+  border-color: var(--green);
+}
+.node-item .flag { font-size: 16px; }
+.node-item .name { flex: 1; font-size: 13px; }
+.node-item .check { color: var(--green); font-size: 14px; }
+.node-item .delay { font-size: 12px; color: var(--text-dim); min-width: 48px; text-align: right; }
+.node-item .delay.fast { color: var(--green); }
+.node-item .delay.slow { color: var(--yellow); }
+.node-item .delay.timeout { color: var(--red); }
+
+.nodes-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  margin: -4px;
+  padding: 4px;
+}
+.nodes-scroll::-webkit-scrollbar { width: 4px; }
+.nodes-scroll::-webkit-scrollbar-track { background: transparent; }
+.nodes-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.nodes-filter {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.filter-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.filter-btn:hover, .filter-btn.active {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: #58a6ff15;
+}
+
+/* ============ 订阅设置 ============ */
+.url-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.url-input:focus { border-color: var(--blue); }
+.url-input::placeholder { color: var(--text-dim); }
+
+.url-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* ============ 消息提示 ============ */
+.msg {
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  display: none;
+}
+.msg.show { display: block; }
+.msg.ok { background: #39d35320; border: 1px solid var(--green); color: var(--green); }
+.msg.err { background: #f8514920; border: 1px solid var(--red); color: var(--red); }
+
+/* ============ Tabs ============ */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+.tab {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--green); border-bottom-color: var(--green); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ============ 页脚 ============ */
+.footer {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-top: 32px;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ============ 响应式 ============ */
+@media (max-width: 640px) {
+  .cards { grid-template-columns: 1fr; }
+  .card.wide { grid-column: 1; }
+  .stat-row { flex-direction: column; gap: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 头部 ============ -->
+<div class="header">
+  <div class="logo">clash<span>-web</span></div>
+  <div class="header-right">
+    <div class="status-badge">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">未运行</span>
+    </div>
+    <button class="btn start-btn" id="btnStart" onclick="doStart()">[ 启动 ]</button>
+    <button class="btn stop-btn" id="btnStop" onclick="doStop()">[ 停止 ]</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ============ 状态概览 ============ -->
+  <div class="cards">
+    <!-- 流量 -->
+    <div class="card">
+      <div class="card-title">实时流量</div>
+      <div class="traffic-block">
+        <div class="traffic-label">下载</div>
+        <div class="rate down" id="downRate">--</div>
+        <div class="total" id="downTotal">已用: --</div>
+      </div>
+      <div class="traffic-block">
+        <div class="traffic-label">上传</div>
+        <div class="rate up" id="upRate">--</div>
+        <div class="total" id="upTotal">已用: --</div>
+      </div>
+    </div>
+
+    <!-- 当前节点 -->
+    <div class="card">
+      <div class="card-title">当前节点</div>
+      <div class="stat-big" id="currentNode">--</div>
+      <div class="stat-label" id="nodeExtra" style="margin-top:8px; color: var(--text-dim)">获取中...</div>
+    </div>
+  </div>
+
+  <!-- ============ Tabs ============ -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('nodes')">节点列表</button>
+    <button class="tab" onclick="switchTab('traffic')">流量记录</button>
+    <button class="tab" onclick="switchTab('settings')">订阅设置</button>
+  </div>
+
+  <!-- 节点列表 -->
+  <div class="tab-panel active" id="panel-nodes">
+    <div class="card wide">
+      <div class="nodes-filter">
+        <button class="filter-btn active" onclick="filterNodes('all', this)">全部</button>
+        <button class="filter-btn" onclick="filterNodes('hk', this)">🇭🇰 香港</button>
+        <button class="filter-btn" onclick="filterNodes('tw', this)">🇹🇼 台湾</button>
+        <button class="filter-btn" onclick="filterNodes('jp', this)">🇯🇵 日本</button>
+        <button class="filter-btn" onclick="filterNodes('sg', this)">🇸🇬 新加坡</button>
+        <button class="filter-btn" onclick="filterNodes('us', this)">🇺🇸 美国</button>
+      </div>
+      <div class="nodes-scroll" id="nodesList">
+        <div style="color: var(--text-dim); padding: 20px; text-align: center;">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 流量记录 -->
+  <div class="tab-panel" id="panel-traffic">
+    <div class="card wide">
+      <div class="card-title">流量历史 (最近 50 条)</div>
+      <div class="nodes-scroll" id="trafficHistory" style="max-height: 400px;">
+        <div style="color: var(--text-dim); padding: 20px; text-align: center;">等待数据...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 订阅设置 -->
+  <div class="tab-panel" id="panel-settings">
+    <div class="card wide">
+      <div class="card-title">订阅链接</div>
+      <div id="msgBox" class="msg"></div>
+      <input class="url-input" type="text" id="urlInput" placeholder="https://your-subscription-url">
+      <div class="url-row">
+        <button class="btn" onclick="loadUrl()">加载</button>
+        <button class="btn active" onclick="saveUrl()">保存</button>
+        <button class="btn" onclick="doRestart()">重启服务</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  clash-web · mihomo proxy manager
+</div>
+
+<script>
+// ============ 全局状态 ============
+let trafficHistory = [];
+let allNodes = [];
+let currentFilter = 'all';
+
+// ============ 工具 ============
+function $(id) { return document.getElementById(id); }
+
+function fmtBytes(b) {
+  if (b < 0) return 'N/A';
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1024*1024*1024) return (b/(1024*1024)).toFixed(2) + ' MB';
+  return (b/(1024*1024*1024)).toFixed(2) + ' GB';
+}
+
+function showMsg(text, type) {
+  const m = $('msgBox');
+  m.textContent = text;
+  m.className = 'msg show ' + type;
+  setTimeout(() => { m.className = 'msg'; }, 4000);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector('.tab[onclick*="' + name + '"]').classList.add('active');
+  $('panel-' + name).classList.add('active');
+}
+
+// ============ 状态轮询 ============
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    const running = d.running;
+    $('statusDot').className = 'dot' + (running ? ' run' : '');
+    $('statusText').textContent = running ? '运行中' : '未运行';
+    $('btnStart').disabled = running;
+    $('btnStop').disabled = !running;
+    if (d.node) {
+      $('currentNode').textContent = d.node;
+      $('nodeExtra').textContent = '已选节点';
+    } else {
+      $('currentNode').textContent = running ? '获取中...' : '--';
+      $('nodeExtra').textContent = running ? '获取中...' : '服务未运行';
+    }
+  } catch(e) {}
+}
+
+// ============ 节点列表 ============
+async function loadNodes() {
+  try {
+    const r = await fetch('/api/proxies');
+    if (!r.ok) return;
+    const d = await r.json();
+    const proxies = d.proxies || {};
+
+    // 提取 provider 节点（排除内置组）
+    const skipTypes = ['Selector', 'URLTest', 'Direct', 'Reject', 'Pass', 'Proxy', 'RejectDrop'];
+    const nodes = [];
+
+    for (const [name, info] of Object.entries(proxies)) {
+      if (skipTypes.includes(info.type)) continue;
+      if (name === 'GLOBAL' || name === 'COMPATIBLE') continue;
+      // 过滤中文括号内内容作为标签
+      const displayName = name.replace(/\s*[\|｜][^\s（）()]+/g, '').trim();
+      const flag = name.match(/🇭🇰|🇹🇼|🇯🇵|🇸🇬|🇺🇸|🇰🇷|🇦🇺|🇩🇪|🇬🇧|🇫🇷|🇳🇱|🇷🇺|🇹🇭|🇲🇾|🇵🇭|🇮🇳|🇧🇷|🇨🇦/)?.[0] || '';
+      const delay = info.history && info.history[0]
+        ? (info.history[0].delay || 0)
+        : (info.extra && info.extra['http://www.gstatic.com/generate_204']
+           ? (info.extra['http://www.gstatic.com/generate_204'].history || [])[0]?.delay || 0
+           : 0);
+      const now = proxies['FINAL']?.now || '';
+      nodes.push({ name, displayName, flag, delay, isNow: name === now || displayName === now });
+    }
+
+    allNodes = nodes;
+    renderNodes();
+  } catch(e) {
+    $('nodesList').innerHTML = '<div style="color:var(--text-dim);padding:20px;text-align:center;">加载失败: ' + e.message + '</div>';
+  }
+}
+
+function renderNodes() {
+  const filtered = currentFilter === 'all'
+    ? allNodes
+    : allNodes.filter(n => {
+        const f = currentFilter;
+        if (f === 'hk') return n.name.includes('香港') || n.name.includes('HK') || n.name.includes('Hong');
+        if (f === 'tw') return n.name.includes('台湾') || n.name.includes('TW') || n.name.includes('Taiwan');
+        if (f === 'jp') return n.name.includes('日本') || n.name.includes('JP') || n.name.includes('Japan');
+        if (f === 'sg') return n.name.includes('新加坡') || n.name.includes('SG') || n.name.includes('Singapore');
+        if (f === 'us') return n.name.includes('美国') || n.name.includes('US') || n.name.includes('United');
+        return true;
+      });
+
+  if (filtered.length === 0) {
+    $('nodesList').innerHTML = '<div style="color:var(--text-dim);padding:20px;text-align:center;">没有匹配的节点</div>';
+    return;
+  }
+
+  $('nodesList').innerHTML = filtered.map(n => {
+    const delayClass = n.delay === 0 ? 'timeout' : (n.delay < 300 ? 'fast' : 'slow');
+    const delayStr = n.delay === 0 ? '超时' : n.delay + ' ms';
+    return `<div class="node-item${n.isNow ? ' active' : ''}" onclick="selectNode('${n.name.replace(/'/g,"\\'")}')">
+      <span class="flag">${n.flag || '○'}</span>
+      <span class="name">${n.displayName}</span>
+      <span class="delay ${delayClass}">${delayStr}</span>
+      ${n.isNow ? '<span class="check">✓</span>' : ''}
+    </div>`;
+  }).join('');
+}
+
+function filterNodes(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderNodes();
+}
+
+async function selectNode(name) {
+  try {
+    // 尝试切换 provider
+    const r = await fetch('/api/providers/sub/select', {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (r.ok) {
+      await loadNodes();
+      await pollStatus();
+      return;
+    }
+    // fallback: 通过 Manual 组切换
+    const r2 = await fetch('/api/proxies/Manual', {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    await loadNodes();
+    await pollStatus();
+  } catch(e) {
+    showMsg('切换失败: ' + e.message, 'err');
+  }
+}
+
+// ============ 轮询流量 ============
+let trafficTimer = null;
+
+function pollTraffic() {
+  fetch('/api/traffic')
+    .then(r => r.json())
+    .then(d => {
+      const ur = fmtBytes(d.up || 0);
+      const dr = fmtBytes(d.down || 0);
+      const ut = fmtBytes(d.upTotal || 0);
+      const dt = fmtBytes(d.downTotal || 0);
+
+      $('downRate').textContent = dr + '/s';
+      $('upRate').textContent = ur + '/s';
+      $('downTotal').textContent = '已用: ' + dt;
+      $('upTotal').textContent = '已用: ' + ut;
+
+      // 追加到历史
+      const now = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      trafficHistory.push({ t: now, up: ur, down: dr, upTotal: ut, downTotal: dt });
+      if (trafficHistory.length > 50) trafficHistory.shift();
+      renderTrafficHistory();
+    })
+    .catch(() => {});
+}
+
+function startTrafficPoll() {
+  if (trafficTimer) clearInterval(trafficTimer);
+  trafficTimer = setInterval(pollTraffic, 1000);
+}
+
+function stopTrafficPoll() {
+  if (trafficTimer) { clearInterval(trafficTimer); trafficTimer = null; }
+  $('downRate').textContent = '--';
+  $('upRate').textContent = '--';
+  $('downTotal').textContent = '已用: --';
+  $('upTotal').textContent = '已用: --';
+}
+
+function renderTrafficHistory() {
+  if (trafficHistory.length === 0) return;
+  const html = trafficHistory.slice().reverse().map(r =>
+    `<div style="display:flex;gap:24px;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span style="color:var(--text-dim);width:70px;">${r.t}</span>
+      <span style="color:var(--blue);width:80px;">↓ ${r.down}/s</span>
+      <span style="color:var(--green);width:80px;">↑ ${r.up}/s</span>
+      <span style="color:var(--text-dim);">累计 ↓ ${r.downTotal}  ↑ ${r.upTotal}</span>
+    </div>`
+  ).join('');
+  $('trafficHistory').innerHTML = html;
+}
+
+// ============ 服务控制 ============
+async function doStart() {
+  $('btnStart').disabled = true;
+  try {
+    const r = await fetch('/api/start');
+    const d = await r.json();
+    if (d.ok) {
+      await pollStatus();
+      setTimeout(() => { loadNodes(); startTrafficPoll(); }, 1000);
+    } else {
+      showMsg('启动失败: ' + d.message, 'err');
+    }
+  } catch(e) {
+    showMsg('启动失败: ' + e.message, 'err');
+  }
+  $('btnStart').disabled = false;
+}
+
+async function doStop() {
+  $('btnStop').disabled = true;
+  try {
+    stopTrafficPoll();
+    const r = await fetch('/api/stop');
+    const d = await r.json();
+    if (d.ok) {
+      await pollStatus();
+    }
+  } catch(e) {}
+  $('btnStop').disabled = false;
+}
+
+async function doRestart() {
+  showMsg('正在重启...', 'ok');
+  await doStop();
+  await new Promise(r => setTimeout(r, 1500));
+  await doStart();
+}
+
+// ============ 订阅 ============
+async function loadUrl() {
+  try {
+    const r = await fetch('/api/url');
+    const d = await r.json();
+    $('urlInput').value = d.url || '';
+  } catch(e) {}
+}
+
+async function saveUrl() {
+  const url = $('urlInput').value.trim();
+  if (!url) { showMsg('订阅链接不能为空', 'err'); return; }
+  try {
+    const r = await fetch('/api/url', {
+      method: 'PUT',
+      body: JSON.stringify({ url }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showMsg('订阅链接已保存，执行「重启服务」使配置生效', 'ok');
+    } else {
+      showMsg('保存失败: ' + (d.error || '未知错误'), 'err');
+    }
+  } catch(e) {
+    showMsg('保存失败: ' + e.message, 'err');
+  }
+}
+
+// ============ 启动 ============
+async function init() {
+  await pollStatus();
+  await loadNodes();
+  await loadUrl();
+  const running = (await (await fetch('/api/status')).json()).running;
+  if (running) startTrafficPoll();
+
+  // 每 5 秒刷新状态和节点
+  setInterval(async () => {
+    await pollStatus();
+    if (document.querySelector('.tab.active').textContent === '节点列表') {
+      await loadNodes();
+    }
+  }, 5000);
+}
+
+init();
+</script>
+</body>
+</html>

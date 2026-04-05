@@ -16,10 +16,15 @@ proxy_server/
 │   ├── Country.mmdb # GeoIP 数据库
 │   └── clash.log   # 运行日志
 ├── Makefile
+├── clash-web/      # Web 管理界面（Python 标准库，零依赖）
+│   ├── server.py
+│   └── static/index.html
+├── test/           # 自动化测试脚本
+│   └── test_run.sh
 └── README.md
 ```
 
-> `profiles/`（订阅节点缓存）、`proxy.txt`（mihomo配置文件）、`.clash-url`（订阅链接）运行时生成在 `bin/` 目录中。
+> `profiles/`（订阅节点缓存）、`proxy.txt`（mihomo 配置文件）、`.clash-url`（订阅链接）运行时生成在 `bin/` 目录中。
 
 ## 快速开始
 
@@ -63,7 +68,7 @@ cd bin
 
 | 命令 | 说明 |
 |------|------|
-| `./clash-ctl status` | 查看当前选中节点（自动追溯真实节点） |
+| `./clash-ctl status` | 查看当前选中节点 + 实时流量（Ctrl+C 退出） |
 | `./clash-ctl list` | 列出所有可用节点（带编号） |
 
 ### 节点管理
@@ -87,6 +92,22 @@ cd bin
 |------|------|
 | `./clash-ctl update-geo` | 更新 GeoIP 数据库 |
 | `./clash-ctl help` | 显示帮助 |
+
+## Web 管理界面
+
+提供图形化 Web 界面，功能与 `clash-ctl` CLI 等价：
+
+- 启动 / 停止代理服务
+- 订阅链接管理
+- 节点切换（支持节点延迟显示）
+- 实时流量监控
+
+```bash
+cd clash-web
+python3 server.py      # 前台运行，http://localhost:8080
+```
+
+**系统要求**：Python 3（标准库，无外部依赖）
 
 ## 使用示例
 
@@ -217,7 +238,7 @@ mihomo 监听 `127.0.0.1:9090`，clash-ctl 通过 HTTP API 控制：
 | 切换节点 | PUT | `/providers/proxies/sub/select` |
 | 切换节点 | PUT | `/proxies/Manual` |
 
-### 4. 进程管理
+### 5. 进程管理
 
 ```c
 // 启动后台进程
@@ -230,7 +251,7 @@ pid = get_clash_pid();  // 通过 pgrep 实现
 kill(pid, SIGTERM);
 ```
 
-### 5. HTTP Chunked Encoding 解析
+### 6. HTTP Chunked Encoding 解析
 
 mihomo API 响应使用 chunked transfer encoding：
 
@@ -246,7 +267,7 @@ Transfer-Encoding: chunked
 
 clash-ctl 从响应中提取 JSON 数据块并拼接。
 
-### 6. 导入订阅节点文件
+### 7. 导入订阅节点文件
 
 将你自己的节点订阅文件 xxx.yaml 拷贝到/bin/prifiles/sub.yaml
 

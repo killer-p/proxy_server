@@ -8,16 +8,28 @@ import sys
 import os
 import json
 import subprocess
+import argparse
 import traceback
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 
+# 切换到 server.py 所在目录（确保所有相对路径正确）
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+# ============ 命令行参数 ============
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--port", type=int, default=None)
+_args, _ = _parser.parse_known_args()
+
 # ============ 配置 ============
-PORT = 8080
+PORT = 8567
 API_HOST = "127.0.0.1"
 API_PORT = 9090
-CLASHCTL_BIN = os.path.join(os.path.dirname(__file__), "../bin/clash-ctl")
-SUBSCRIBE_FILE = os.path.join(os.path.dirname(__file__), "../bin/.clash-url")
+
+# server.py 与 clash-ctl 同在 app/ 目录下
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+CLASHCTL_BIN = os.path.join(APP_DIR, "clash-ctl")
+SUBSCRIBE_FILE = os.path.join(APP_DIR, ".clash-url")
 
 # ============ 工具函数 ============
 
@@ -142,6 +154,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def proxy_mihomo(self, method, path, body=None):
         """代理请求到 mihomo"""
+        if not clash_running():
+            self.send_json({"error": "mihomo 未启动，请先启动服务"}, 503)
+            return
         try:
             import http.client
             conn = http.client.HTTPConnection(API_HOST, API_PORT, timeout=10)
@@ -221,20 +236,17 @@ class Handler(SimpleHTTPRequestHandler):
 
         # 静态文件
         if path == "/" or not path.startswith("/api"):
-            file_path = path.lstrip("/")
-            if not file_path:
-                file_path = "static/index.html"
-            else:
-                file_path = "static/" + file_path
+            file_path = "clash-web/static/index.html"
 
-            abs_path = os.path.join(os.path.dirname(__file__), file_path)
+            abs_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_path)
             if os.path.isfile(abs_path):
                 self.path = "/" + file_path
                 SimpleHTTPRequestHandler.do_GET(self)
             else:
+                print(f"未找到静态文件{abs_path}")
                 self.send_error(404)
             return
-
+        print(f"错误的get 请求")
         self.send_error(404)
 
     def do_PUT(self):
@@ -255,8 +267,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "invalid JSON"}, 400)
             return
 
-        # API: 代理到 mihomo
+        # API: 代理到 mihomo（需要 mihomo 运行中）
         if path.startswith("/api/"):
+            if not clash_running():
+                self.send_json({"error": "mihomo 未启动，请先启动服务"}, 503)
+                return
             mihomo_path = path[4:]
             status = api_put(mihomo_path, body)
             self.send_json({"ok": status in (200, 204)}, status=200 if status in (200, 204) else status)
@@ -276,9 +291,13 @@ class Handler(SimpleHTTPRequestHandler):
 # ============ 启动 ============
 
 if __name__ == "__main__":
-    print(f"clash-web 启动中，访问 http://localhost:{PORT}")
+    # 强制切换到 server.py 所在目录（确保相对路径正确）
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # 端口：命令行 --port > 默认 PORT
+    port = _args.port if _args.port else PORT
+    print(f"clash-web 启动中，访问 http://localhost:{port}")
     print(f"按 Ctrl+C 停止")
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    server = HTTPServer(("0.0.0.0", port), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

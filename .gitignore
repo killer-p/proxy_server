@@ -1,6 +1,9 @@
 *.clash-url
-bin/*.db
-bin/proxy.txt
-bin/profiles
-bin/*.log
+app/*.db
+app/proxy.txt
+app/profiles
+app/*.log
+clash-fnos/app/*
+!clash-fnos/app/ui
+clash-fnos/*.fpk
 test/logs

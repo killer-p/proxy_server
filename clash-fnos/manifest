@@ -1,0 +1,18 @@
+appname=fnnas.clash-proxy
+version=1.0.0
+display_name=Clash 代理管理器
+desc=基于 mihomo 的局域网代理管理工具，支持订阅管理、节点切换和实时流量监控。<br><br>安装时请设置 Web 管理端口，安装完成后在 Web 界面中配置订阅链接。
+platform=x86
+source=thirdparty
+
+maintainer=killerp
+maintainer_url=https://github.com/killerp
+distributor=killerp
+distributor_url=https://github.com/killerp
+
+os_min_version=0.9.0
+
+install_dep_apps=python312
+
+desktop_uidir=ui
+desktop_applaunchname=fnnas.clash-proxy.Application

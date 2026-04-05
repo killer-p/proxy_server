@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "fnnas.clash-proxy.Application": {
+            "title": "Clash 代理",
+            "icon": "images/icon-{0}.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "${wizard_port}",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

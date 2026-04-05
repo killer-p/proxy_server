@@ -1,0 +1,21 @@
+[
+    {
+        "stepTitle": "配置端口",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "设置 Clash 代理 Web 管理界面的监听端口。建议使用 8567。"
+            },
+            {
+                "type": "text",
+                "field": "wizard_port",
+                "label": "Web 管理端口",
+                "initValue": "8567",
+                "rules": [
+                    { "required": true, "message": "端口不能为空" },
+                    { "pattern": "^[0-9]+$", "message": "请输入数字" }
+                ]
+            }
+        ]
+    }
+]

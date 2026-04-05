@@ -1,0 +1,5 @@
+#!/bin/bash
+# 安装前初始化（系统自动调用，解压 target/ 目录）
+# 此脚本由 fnOS 系统在 install_callback 之前调用
+# 无需做任何事，target/ 解压由系统自动完成
+exit 0

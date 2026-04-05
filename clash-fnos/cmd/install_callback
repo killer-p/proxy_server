@@ -1,0 +1,8 @@
+#!/bin/bash
+# 安装后回调：创建必要目录
+
+mkdir -p "${TRIM_PKGHOME}"
+mkdir -p "${TRIM_PKGVAR}/profiles"
+mkdir -p "${TRIM_PKGVAR}/pids"
+
+exit 0

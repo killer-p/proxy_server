@@ -7,7 +7,7 @@
 # 流程（模拟用户操作）:
 #   cd <项目根目录>
 #   make
-#   cd bin
+#   cd app
 #   ./clash-ctl set-url <链接>
 #   ./clash-ctl start
 #   curl 测试 Google 连通性
@@ -47,7 +47,7 @@ log_file() {
 # 优先级：命令行参数 > 环境变量 > 此处变量（空白）
 
 # 仅在未设置时赋予默认值（避免覆盖环境变量 SUB_URL）
-: "${SUB_URL:=}"
+: "${SUB_URL:=https://45.159.48.249/subscribe?token=e1edd6f2620ab0dc936caea7e8b1de51}"
 
 # ====== 参数检查 ======
 if [ -z "$SUB_URL" ] && [ $# -lt 1 ]; then
@@ -91,7 +91,7 @@ step_set_url() {
     log_file "SET-URL" "保存订阅链接..."
 
     (
-        cd "$PROJECT_DIR/bin"
+        cd "$PROJECT_DIR/app"
         if ./clash-ctl set-url "$SUB_URL" > >(tee -a "${LOG_DIR}/SET-URL.log") 2>&1; then
             log "SET-URL" "订阅链接保存成功"
             log_file "SET-URL" "订阅链接保存成功"
@@ -109,7 +109,7 @@ step_start() {
     log_file "START" "启动代理服务..."
 
     (
-        cd "$PROJECT_DIR/bin"
+        cd "$PROJECT_DIR/app"
         if ./clash-ctl start > >(tee -a "${LOG_DIR}/START.log") 2>&1; then
             log "START" "启动命令执行完成"
             log_file "START" "启动命令执行完成"
@@ -166,7 +166,7 @@ step_stop() {
     log_file "STOP" "停止代理服务..."
 
     (
-        cd "$PROJECT_DIR/bin"
+        cd "$PROJECT_DIR/app"
         if ./clash-ctl stop > >(tee -a "${LOG_DIR}/STOP.log") 2>&1; then
             log "STOP" "停止命令执行完成"
             log_file "STOP" "停止命令执行完成"

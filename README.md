@@ -10,25 +10,30 @@ proxy_server/
 │   └── clash-ctl.c
 ├── lib/            # 第三方库
 │   └── cjson/      # cJSON 源码
-├── bin/            # 编译产物 + 运行时文件
-│   ├── clash-ctl   # 可执行文件
+├── app/            # 编译产物 + 运行时文件（所有程序统一放在此目录）
+│   ├── clash-ctl   # CLI 控制工具
 │   ├── mihomo      # 代理核心
 │   ├── Country.mmdb # GeoIP 数据库
+│   ├── server.py   # Web 管理界面（Python 标准库，零依赖）
+│   ├── clash-web/static/  # 前端文件
 │   └── clash.log   # 运行日志
 ├── Makefile
-├── clash-web/      # Web 管理界面（Python 标准库，零依赖）
-│   ├── server.py
-│   └── static/index.html
 ├── test/           # 自动化测试脚本
 │   └── test_run.sh
+├── clash-fnos/     # 飞牛 fnOS 打包配置（make fnpack 打包用）
+│   ├── manifest
+│   ├── app/        # 打包时同步 app/ 下的文件
+│   ├── cmd/        # fnOS 生命周期脚本（main/start/stop）
+│   ├── config/     # fnOS 权限配置
+│   └── wizard/     # fnOS 安装向导
 └── README.md
 ```
 
-> `profiles/`（订阅节点缓存）、`proxy.txt`（mihomo 配置文件）、`.clash-url`（订阅链接）运行时生成在 `bin/` 目录中。
+> `profiles/`（订阅节点缓存）、`proxy.txt`（mihomo 配置文件）、`.clash-url`（订阅链接）运行时生成在 `app/` 目录中。
 
 ## 快速开始
 
-### 1. 编译(可选，也提供了bin/clash-ctl 可执行文件)
+### 1. 编译（可选）
 
 ```bash
 make
@@ -37,22 +42,23 @@ make
 ### 2. 配置订阅
 
 ```bash
-cd bin
+cd app
 ./clash-ctl set-url <订阅链接>
 ```
 
-### 3. 启动
+### 3. 启动 CLI 方式
 
 ```bash
 ./clash-ctl start
 ```
 
-### 更新二进制文件
+### 4. Web 界面方式
 
-如需更新 mihomo 或 GeoIP 数据库，请手动下载并替换：
+```bash
+python3 app/server.py        # 前台运行，http://localhost:8567
+```
 
-- mihomo: https://github.com/MetaCubeX/mihomo/releases
-- Country.mmdb: https://github.com/Loyalsoldier/geoip/releases
+**系统要求**：Python 3（标准库，无外部依赖）
 
 ## 命令说明
 
@@ -102,19 +108,58 @@ cd bin
 - 节点切换（支持节点延迟显示）
 - 实时流量监控
 
+启动方式：
 ```bash
-cd clash-web
-python3 server.py      # 前台运行，http://localhost:8080
+python3 app/server.py                    # 默认端口 8567
+python3 app/server.py --port 8080       # 指定端口
 ```
 
-**系统要求**：Python 3（标准库，无外部依赖）
+## 局域网设备配置
+
+**Windows / macOS / Linux 图形界面:**
+```
+设置 → 网络/系统代理 → 手动代理服务器
+地址: <服务器IP>
+端口: 7890
+类型: HTTP
+```
+
+**Linux 命令行:**
+```bash
+export http_proxy="http://服务器IP:7890"
+export https_proxy="http://服务器IP:7890"
+```
+
+**Android / iOS:**
+在代理 App 中配置 HTTP 代理，地址同上。
+
+## 飞牛 fnOS 部署
+
+使用 `make fnpack` 打包，上传到 fnOS 应用中心安装：
+
+```bash
+make fnpack    # 生成 clash-fnos/fnnas.clash-proxy.fpk
+```
+
+安装后：
+- 应用中心"启动"按钮启动 server.py
+- 点击桌面图标打开 Web 管理界面
+- 在 Web 界面配置订阅链接、启动/停止代理
+
+fnOS 上的目录结构：
+```
+/var/apps/fnnas.clash-proxy/target/   ← TRIM_APPDEST
+├── clash-ctl
+├── mihomo
+├── server.py
+├── clash-web/static/
+└── ...
+```
 
 ## 使用示例
 
 ```bash
-
-#进入bin目录
-cd bin
+cd app
 
 # 设置订阅
 ./clash-ctl set-url https://your-subscription-url
@@ -138,25 +183,6 @@ cd bin
 # 查看当前状态
 ./clash-ctl status
 ```
-
-## 局域网设备配置
-
-**Windows / macOS / Linux 图形界面:**
-```
-设置 → 网络/系统代理 → 手动代理服务器
-地址: <服务器IP>
-端口: 7890
-类型: HTTP
-```
-
-**Linux 命令行:**
-```bash
-export http_proxy="http://服务器IP:7890"
-export https_proxy="http://服务器IP:7890"
-```
-
-**Android / iOS:**
-在代理 App 中配置 HTTP 代理，地址同上。
 
 ## 进阶
 
@@ -269,14 +295,14 @@ clash-ctl 从响应中提取 JSON 数据块并拼接。
 
 ### 7. 导入订阅节点文件
 
-将你自己的节点订阅文件 xxx.yaml 拷贝到/bin/prifiles/sub.yaml
+将你自己的节点订阅文件 xxx.yaml 拷贝到 `app/profiles/sub.yaml`
 
 ## 维护说明
 
 ### 更新订阅
 
 ```bash
-cd bin
+cd app
 ./clash-ctl set-url <新链接>   # 保存链接
 ./clash-ctl update            # 更新配置
 ./clash-ctl restart            # 重启生效
@@ -285,7 +311,7 @@ cd bin
 ### 更新 GeoIP
 
 ```bash
-cd bin
+cd app
 ./clash-ctl update-geo
 ./clash-ctl restart
 ```
@@ -293,7 +319,7 @@ cd bin
 ### 查看日志
 
 ```bash
-tail -f bin/clash.log
+tail -f app/clash.log
 ```
 
 ### 自动化测试

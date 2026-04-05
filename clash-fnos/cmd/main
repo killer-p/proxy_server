@@ -1,0 +1,38 @@
+#!/bin/bash
+#
+# cmd/main — fnOS 进程生命周期入口（仅管理 server.py）
+
+PID_FILE="${TRIM_PKGHOME}/.fnproxy-web.pid"
+
+case $1 in
+start)
+    # 已启动则跳过
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        exit 0
+    fi
+    WEB_PORT=$(cat "${TRIM_PKGHOME}/.fnproxy-port" 2>/dev/null || echo "8567")
+    python3 -u "${TRIM_APPDEST}/server.py" --port "$WEB_PORT" \
+        >> "${TRIM_APPDEST}/clash-web.log" 2>&1 &
+    echo $! > "$PID_FILE"
+    exit 0
+    ;;
+stop)
+    if [ -f "$PID_FILE" ]; then
+        kill "$(cat "$PID_FILE")" 2>/dev/null
+        rm -f "$PID_FILE"
+    fi
+    exit 0
+    ;;
+status)
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        echo "server.py running (PID $(cat "$PID_FILE"))"
+        exit 0
+    else
+        echo "server.py stopped"
+        exit 3
+    fi
+    ;;
+*)
+    exit 1
+    ;;
+esac

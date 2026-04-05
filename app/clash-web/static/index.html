@@ -555,8 +555,9 @@ let trafficTimer = null;
 
 function pollTraffic() {
   fetch('/api/traffic')
-    .then(r => r.json())
+    .then(r => { if (!r.ok) return null; return r.json(); })
     .then(d => {
+      if (!d) return;
       const ur = fmtBytes(d.up || 0);
       const dr = fmtBytes(d.down || 0);
       const ut = fmtBytes(d.upTotal || 0);
@@ -603,6 +604,20 @@ function renderTrafficHistory() {
 }
 
 // ============ 服务控制 ============
+
+// 等待 mihomo REST API 就绪（最多 15 秒）
+async function waitForMihomo() {
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      if (d.running) return true;
+    } catch(e) {}
+  }
+  return false;
+}
+
 async function doStart() {
   $('btnStart').disabled = true;
   try {
@@ -610,7 +625,10 @@ async function doStart() {
     const d = await r.json();
     if (d.ok) {
       await pollStatus();
-      setTimeout(() => { loadNodes(); startTrafficPoll(); }, 1000);
+      if (await waitForMihomo()) {
+        loadNodes();
+        startTrafficPoll();
+      }
     } else {
       showMsg('启动失败: ' + d.message, 'err');
     }

@@ -427,6 +427,7 @@ int cmd_update(void)
         "      - DIRECT\n"
         "\n"
         "rules:\n"
+        "  - GEOIP,cn,DIRECT\n"
         "  - MATCH,FINAL\n",
         url);
 

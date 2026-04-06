@@ -649,14 +649,26 @@ int cmd_stop(void)
         return 0;
     }
 
+    /* 优先通过 REST API 优雅退出 */
+    char *resp = NULL;
+    int code = http_request("PUT", "/quit", NULL, &resp);
+    free(resp);
+
+    if (code == 200) {
+        sleep(1);
+        print_ok("mihomo 已关闭");
+        return 0;
+    }
+
+    /* fallback: SIGTERM */
     if (kill(pid, SIGTERM) == 0) {
         sleep(1);
         print_ok("Clash 已停止");
         return 0;
-    } else {
-        print_err("停止 Clash 失败");
-        return -1;
     }
+
+    print_err("停止 Clash 失败");
+    return -1;
 }
 
 /*

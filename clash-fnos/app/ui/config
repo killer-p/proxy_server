@@ -1,7 +1,7 @@
 {
     ".url": {
-        "fnnas.clash-proxy.Application": {
-            "title": "Clash 代理",
+        "proxy_server.Application": {
+            "title": "代理服务器",
             "icon": "images/icon-{0}.png",
             "type": "url",
             "protocol": "http",

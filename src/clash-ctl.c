@@ -921,7 +921,6 @@ int cmd_list(void)
     return 0;
 }
 
-int cmd_select(const char *node_name)
 static int get_node_name_by_index(int index, char *out_name, size_t out_size)
 {
     char *json = NULL;

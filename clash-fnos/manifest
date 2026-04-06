@@ -1,6 +1,6 @@
-appname=fnnas.clash-proxy
+appname=proxy_server
 version=1.0.0
-display_name=Clash 代理管理器
+display_name=代理服务器
 desc=基于 mihomo 的局域网代理管理工具，支持订阅管理、节点切换和实时流量监控。<br><br>安装时请设置 Web 管理端口，安装完成后在 Web 界面中配置订阅链接。
 platform=x86
 source=thirdparty
@@ -15,4 +15,4 @@ os_min_version=0.9.0
 install_dep_apps=python312
 
 desktop_uidir=ui
-desktop_applaunchname=fnnas.clash-proxy.Application
+desktop_applaunchname=proxy_server.Application

@@ -2,6 +2,6 @@
     "defaults": {
         "run-as": "package"
     },
-    "username": "fnnas.clash-proxy",
-    "groupname": "fnnas.clash-proxy"
+    "username": "proxy_server",
+    "groupname": "proxy_server"
 }

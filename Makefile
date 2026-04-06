@@ -93,5 +93,5 @@ fnpack: app/clash-ctl
 	@cd $(FPK_DIR) && fnpack build
 	@echo "打包完成"
 	@# 复制到共享目录
-	@cp $(FPK_DIR)/fnnas.clash-proxy.fpk /srv/samba/share/
-	@echo "已复制到 /srv/samba/share/fnnas.clash-proxy.fpk"
+	@cp $(FPK_DIR)/proxy_server.fpk /srv/samba/share/
+	@echo "已复制到 /srv/samba/share/proxy_server.fpk"

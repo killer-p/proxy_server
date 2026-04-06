@@ -114,7 +114,7 @@ export https_proxy="http://服务器IP:7890"
 打包并安装到 fnOS：
 
 ```bash
-make fnpack    # 生成 clash-fnos/fnnas.clash-proxy.fpk
+make fnpack    # 生成 clash-fnos/proxy_server.fpk
 ```
 
 上传到 fnOS 应用中心安装后：

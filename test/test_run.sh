@@ -85,6 +85,33 @@ step_make() {
     )
 }
 
+# ====== 步骤 1b: fnpack ======
+step_fnpack() {
+    log "FNPACK" "打包 fnOS 应用..."
+    log_file "FNPACK" "打包 fnOS 应用..."
+
+    (
+        cd "$PROJECT_DIR"
+        if make fnpack > >(tee -a "${LOG_DIR}/FNPACK.log") 2>&1; then
+            log "FNPACK" "打包成功"
+            log_file "FNPACK" "打包成功"
+        else
+            log "FNPACK" "打包失败"
+            log_file "FNPACK" "打包失败"
+            exit 1
+        fi
+    )
+    FPK="${PROJECT_DIR}/clash-fnos/proxy_server.fpk"
+    if [ -f "$FPK" ]; then
+        log "FNPACK" "安装包已生成: ${FPK}"
+        log_file "FNPACK" "安装包已生成: ${FPK}"
+    else
+        log "FNPACK" "安装包未找到: ${FPK}"
+        log_file "FNPACK" "安装包未找到: ${FPK}"
+        return 1
+    fi
+}
+
 # ====== 步骤 2: set-url ======
 step_set_url() {
     log "SET-URL" "保存订阅链接..."
@@ -185,6 +212,7 @@ log "MAIN" "========== 测试流程开始 =========="
 log_file "MAIN" "========== 测试流程开始 =========="
 
 step_make    || FAILED=1
+step_fnpack  || FAILED=1
 step_set_url || FAILED=1
 step_start   || FAILED=1
 step_wait

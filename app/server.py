@@ -9,7 +9,6 @@ import os
 import json
 import subprocess
 import argparse
-import traceback
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 

@@ -921,39 +921,7 @@ int cmd_list(void)
     return 0;
 }
 
-/*
- * URL 编码（简化版，仅处理中文和空格）
- */
-void url_encode(const char *src, char *dst, size_t dst_size)
-{
-    static const char hex[] = "0123456789ABCDEF";
-    size_t j = 0;
-
-    while (*src && j < dst_size - 4) {
-        unsigned char c = *src;
-        if (c >= 0x80) {
-            /* UTF-8 中文字符 */
-            if (j < dst_size - 4) {
-                dst[j++] = '%';
-                dst[j++] = hex[(c >> 4) & 0x0F];
-                dst[j++] = hex[c & 0x0F];
-            }
-        } else if (c == ' ' || c == '#' || c == '%') {
-            dst[j++] = '%';
-            dst[j++] = hex[(c >> 4) & 0x0F];
-            dst[j++] = hex[c & 0x0F];
-        } else {
-            dst[j++] = c;
-        }
-        src++;
-    }
-    dst[j] = '\0';
-}
-
-/*
- * 节点选择：切换到指定节点
- */
-/* 根据索引查找节点名 */
+int cmd_select(const char *node_name)
 static int get_node_name_by_index(int index, char *out_name, size_t out_size)
 {
     char *json = NULL;

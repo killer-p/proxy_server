@@ -1,3 +1,8 @@
 #!/bin/bash
-# 卸载后回调：fnOS 系统自动清理 target/ 等目录，无需额外清理
+# 卸载前回调：系统停止应用后、删除文件前调用
+# 关闭 mihomo（确保进程退出）
+MIHOMO_PID=$(pgrep -f '/mihomo ' 2>/dev/null)
+if [ -n "$MIHOMO_PID" ]; then
+    kill -9 "$MIHOMO_PID" 2>/dev/null
+fi
 exit 0

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# cmd/main — fnOS 进程生命周期入口（仅管理 server.py）
+# cmd/main — fnOS 进程生命周期入口（管理 server.py 和 mihomo）
 
 PID_FILE="${TRIM_PKGHOME}/.fnproxy-web.pid"
 
@@ -17,9 +17,15 @@ start)
     exit 0
     ;;
 stop)
+    # 关闭 server.py
     if [ -f "$PID_FILE" ]; then
         kill "$(cat "$PID_FILE")" 2>/dev/null
         rm -f "$PID_FILE"
+    fi
+    # 同步关闭 mihomo
+    MIHOMO_PID=$(pgrep -f '/mihomo ' 2>/dev/null)
+    if [ -n "$MIHOMO_PID" ]; then
+        kill "$MIHOMO_PID" 2>/dev/null
     fi
     exit 0
     ;;

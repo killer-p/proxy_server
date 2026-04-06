@@ -40,6 +40,7 @@
 /* ====== 配置常量 ====== */
 #define CLASH_API_HOST   "127.0.0.1"
 #define CLASH_API_PORT   9090
+#define CLASH_SUB_YAML "profiles/sub.yaml"
 #define CLASH_CONFIG     "proxy.txt"
 #define CLASH_BIN        "mihomo"
 #define CLASH_LOG_FILE   "clash.log"
@@ -428,6 +429,8 @@ int cmd_update(void)
 
     fclose(fp);
 
+    // 删除clash的订阅缓存
+    remove(CLASH_SUB_YAML);
     print_ok("配置文件已更新（proxy-provider type: http）");
     printf("  配置文件: %s\n", CLASH_CONFIG);
     printf("  订阅 URL: %s\n", url);
@@ -557,6 +560,7 @@ int cmd_start(void)
         print_err("启动 Clash 失败");
         return -1;
     }
+    printf("start cmd %s success\n", cmd);
 
     /* 等待 Clash 启动 */
     print_info("正在启动 Clash...");

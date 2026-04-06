@@ -284,7 +284,10 @@ char* get_subscription_url(void)
     snprintf(path, sizeof(path), "%s/%s", getenv("PWD") ? getenv("PWD") : ".", SUBSCRIBE_FILE);
 
     FILE *fp = fopen(path, "r");
-    if (!fp) return NULL;
+    if (!fp) {
+        printf("无法找到订阅链接：%s\n", path);
+        return NULL;
+    }
 
     static char url[2048];
     if (fgets(url, sizeof(url), fp)) {

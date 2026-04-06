@@ -10,9 +10,10 @@ start)
     if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
         exit 0
     fi
+    # 进入到app目录执行server.py 确保工作目录正确，避免路径问题
+    cd ${TRIM_APPDEST}
     WEB_PORT=$(cat "${TRIM_PKGHOME}/.fnproxy-port" 2>/dev/null || echo "8567")
-    python3 -u "${TRIM_APPDEST}/server.py" --port "$WEB_PORT" \
-        >> "${TRIM_APPDEST}/clash-web.log" 2>&1 &
+    python3 -u server.py --port "$WEB_PORT" >> clash-web.log 2>&1 &
     echo $! > "$PID_FILE"
     exit 0
     ;;

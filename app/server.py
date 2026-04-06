@@ -8,6 +8,7 @@ import sys
 import os
 import json
 import subprocess
+import shlex
 import argparse
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
@@ -74,8 +75,9 @@ def clash_running():
 def clash_cmd(cmd):
     """执行 clash-ctl 命令"""
     try:
+        args = [CLASHCTL_BIN] + shlex.split(cmd)
         result = subprocess.run(
-            [CLASHCTL_BIN, cmd],
+            args,
             capture_output=True, text=True, timeout=30,
             cwd=os.path.dirname(CLASHCTL_BIN)
         )
